@@ -267,18 +267,51 @@ impl Executor {
                 }
                 
                 Opcode::Update { cursor_id, updates } => {
-                    // Update current row
-                    // This is simplified - would need to:
-                    // 1. Delete old record
+                    // Update current row:
+                    // 1. Get current record
                     // 2. Apply updates to create new record
-                    // 3. Insert new record
+                    // 3. Delete old record
+                    // 4. Insert new record
                     
-                    if let Some(_state) = self.cursors.get(cursor_id) {
-                        // Placeholder: Apply updates
-                        for (_col_idx, _expr) in updates {
-                            // Would evaluate _expr and update column _col_idx
+                    if let Some(state) = self.cursors.get(cursor_id) {
+                        if let Some(record) = &state.current_record {
+                            // Create a mutable copy of the record's values
+                            let mut new_values = record.values.clone();
+                            
+                            // Apply each update
+                            for (col_idx, expr) in updates {
+                                // Evaluate the expression to get the new value
+                                let new_val = self.evaluator.eval(expr)?;
+                                
+                                // Convert Value to RecordValue
+                                let record_val = match new_val {
+                                    Value::Integer(i) => RecordValue::Integer(i),
+                                    Value::Real(r) => RecordValue::Real(r),
+                                    Value::Text(s) => RecordValue::Text(s),
+                                    Value::Blob(b) => RecordValue::Blob(b),
+                                    Value::Null => RecordValue::Null,
+                                };
+                                
+                                // Update the column
+                                if *col_idx < new_values.len() {
+                                    new_values[*col_idx] = record_val;
+                                }
+                            }
+                            
+                            // Create new record with updated values
+                            let new_record = Record {
+                                key: record.key.clone(),
+                                values: new_values,
+                            };
+                            
+                            // Delete old record and insert new one
+                            let root_page_id = state.btree.root_page_id();
+                            let mut btree = BTree::open(root_page_id)?;
+                            btree.delete(pager, &record.key)?;
+                            btree.insert(pager, new_record)?;
+                            
+                            self.result.rows_affected += 1;
                         }
-                        self.result.rows_affected += 1;
                     }
                     pc += 1;
                 }

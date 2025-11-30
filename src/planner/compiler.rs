@@ -96,13 +96,15 @@ impl VMCompiler {
             opcodes: std::mem::take(&mut self.opcodes),
         };
         
-        #[cfg(test)]
+        // Debug: Print VM program for UPDATE/DELETE operations (disabled by default)
+        #[cfg(feature = "debug-vm")]
         {
-            // Print VM program for debugging WHERE clauses in tests
-            let has_filter = program.opcodes.iter().any(|op| matches!(op, Opcode::Filter { .. }));
-            if has_filter && std::env::var("DEBUG_VM").is_ok() {
+            let has_update_or_delete = program.opcodes.iter().any(|op| {
+                matches!(op, Opcode::Update { .. } | Opcode::Delete { .. })
+            });
+            if has_update_or_delete {
                 eprintln!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-                eprintln!("VM Program: {} opcodes", program.opcodes.len());
+                eprintln!("VM Program (UPDATE/DELETE): {} opcodes", program.opcodes.len());
                 for (i, opcode) in program.opcodes.iter().enumerate() {
                     eprintln!("  {}: {:?}", i, opcode);
                 }
@@ -517,11 +519,10 @@ impl VMCompiler {
             
             // Now generate Filter opcode (columns are in registers)
             // If filter fails, skip this row (jump to Next)
-            // We'll patch this later with correct jump target
-            let next_position = self.opcodes.len() + 100; // Placeholder
+            // Use placeholder that will be patched later
             self.opcodes.push(Opcode::Filter {
                 condition: predicate.clone(),
-                jump_target: next_position,
+                jump_target: 9999, // Placeholder - will be patched
             });
         }
         
@@ -604,11 +605,10 @@ impl VMCompiler {
             
             // Now generate Filter opcode (columns are in registers)
             // If filter fails, skip this row (jump to Next)
-            // We'll patch this later with correct jump target
-            let next_position = self.opcodes.len() + 100; // Placeholder
+            // Use placeholder that will be patched later
             self.opcodes.push(Opcode::Filter {
                 condition: predicate.clone(),
-                jump_target: next_position,
+                jump_target: 9999, // Placeholder - will be patched
             });
         }
         
