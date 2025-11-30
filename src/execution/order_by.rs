@@ -11,7 +11,7 @@ pub struct OrderByExecutor;
 
 impl OrderByExecutor {
     /// Sort rows by ORDER BY clause
-    pub fn sort(rows: &mut [Vec<Value>], _order_by: &[OrderBy]) -> Result<()> {
+    pub fn sort(_rows: &mut [Vec<Value>], _order_by: &[OrderBy]) -> Result<()> {
         // TODO: Implement full ORDER BY sorting
         // For now, keep rows as-is
         Ok(())

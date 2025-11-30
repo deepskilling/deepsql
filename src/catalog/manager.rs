@@ -8,7 +8,9 @@ use crate::storage::pager::Pager;
 use crate::planner::logical::{LogicalPlan, DataType as PlanDataType};
 
 /// Special page IDs for system catalog
+#[allow(dead_code)]
 const CATALOG_ROOT_PAGE: u32 = 1;
+#[allow(dead_code)]
 const CATALOG_META_KEY: &[u8] = b"__catalog_meta__";
 
 /// Catalog manager - handles catalog persistence
@@ -30,7 +32,7 @@ impl CatalogManager {
     }
     
     /// Load catalog from database
-    pub fn load(&mut self, pager: &mut Pager) -> Result<()> {
+    pub fn load(&mut self, _pager: &mut Pager) -> Result<()> {
         // Try to read catalog from special meta page
         // For now, start with empty catalog
         // TODO: Implement actual persistence using a special B+Tree
@@ -42,13 +44,13 @@ impl CatalogManager {
     }
     
     /// Save catalog to database
-    pub fn save(&mut self, pager: &mut Pager) -> Result<()> {
+    pub fn save(&mut self, _pager: &mut Pager) -> Result<()> {
         if !self.dirty {
             return Ok(()); // No changes to save
         }
         
         // Serialize catalog
-        let catalog_json = serde_json::to_string(&self.catalog)
+        let _catalog_json = serde_json::to_string(&self.catalog)
             .map_err(|e| Error::Internal(format!("Failed to serialize catalog: {}", e)))?;
         
         // TODO: Write to special meta B+Tree

@@ -5,6 +5,7 @@
 use crate::sql::ast::{Expr, OrderBy};
 
 /// Logical plan node
+#[allow(missing_docs)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum LogicalPlan {
     /// Table scan
@@ -68,27 +69,39 @@ pub enum LogicalPlan {
 /// Projection expression with optional alias
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProjectionExpr {
+    /// Expression to project
     pub expr: Expr,
+    /// Optional alias for the expression
     pub alias: Option<String>,
 }
 
 /// Column specification for CREATE TABLE
 #[derive(Debug, Clone, PartialEq)]
 pub struct ColumnSpec {
+    /// Column name
     pub name: String,
+    /// Data type
     pub data_type: DataType,
+    /// Whether column is NOT NULL
     pub not_null: bool,
+    /// Whether column is PRIMARY KEY
     pub primary_key: bool,
+    /// Whether column is UNIQUE
     pub unique: bool,
+    /// Default value expression
     pub default: Option<String>,
 }
 
 /// Data type specification
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum DataType {
+    /// INTEGER type
     Integer,
+    /// REAL (floating point) type
     Real,
+    /// TEXT (string) type
     Text,
+    /// BLOB (binary) type
     Blob,
 }
 

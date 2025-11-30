@@ -16,10 +16,10 @@ impl UpdateExecutor {
     pub fn execute(
         plan: LogicalPlan,
         catalog: &CatalogManager,
-        pager: &mut Pager,
+        _pager: &mut Pager,
     ) -> Result<QueryResult> {
         match plan {
-            LogicalPlan::Update { table, assignments, filter } => {
+            LogicalPlan::Update { table, assignments: _assignments, filter: _filter } => {
                 // Verify table exists
                 let _table_schema = catalog.get_table(&table)
                     .ok_or_else(|| Error::Internal(format!("Table '{}' does not exist", table)))?;

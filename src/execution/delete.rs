@@ -16,10 +16,10 @@ impl DeleteExecutor {
     pub fn execute(
         plan: LogicalPlan,
         catalog: &CatalogManager,
-        pager: &mut Pager,
+        _pager: &mut Pager,
     ) -> Result<QueryResult> {
         match plan {
-            LogicalPlan::Delete { table, filter } => {
+            LogicalPlan::Delete { table, filter: _filter } => {
                 // Verify table exists
                 let _table_schema = catalog.get_table(&table)
                     .ok_or_else(|| Error::Internal(format!("Table '{}' does not exist", table)))?;

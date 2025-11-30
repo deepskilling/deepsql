@@ -49,9 +49,9 @@ impl IndexBTree {
     /// Scan the index for keys in a range
     pub fn scan_range(
         &mut self,
-        pager: &mut Pager,
-        start_key: Option<&[u8]>,
-        end_key: Option<&[u8]>,
+        _pager: &mut Pager,
+        _start_key: Option<&[u8]>,
+        _end_key: Option<&[u8]>,
     ) -> Result<Vec<u64>> {
         // This would use cursor to iterate through matching keys
         // For now, return empty list

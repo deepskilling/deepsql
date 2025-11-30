@@ -6,6 +6,7 @@ use crate::planner::logical::LogicalPlan;
 use crate::sql::ast::{Expr, OrderBy};
 
 /// Physical plan node (maps to VM opcodes)
+#[allow(missing_docs)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum PhysicalPlan {
     /// Table scan

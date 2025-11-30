@@ -61,17 +61,14 @@ fn main() {
     }
 }
 
-fn execute_command(db_path: &str, sql: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let repl = Repl::new(db_path)?;
+fn execute_command(_db_path: &str, _sql: &str) -> Result<(), Box<dyn std::error::Error>> {
     // Note: This is a simplified version. In a full implementation,
     // we'd expose execute_sql as public and call it directly.
     println!("Command execution not yet implemented. Use REPL mode.");
     Ok(())
 }
 
-fn execute_file(db_path: &str, file_path: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let _sql = std::fs::read_to_string(file_path)?;
-    let mut _repl = Repl::new(db_path)?;
+fn execute_file(_db_path: &str, _file_path: &str) -> Result<(), Box<dyn std::error::Error>> {
     // Note: This is a simplified version. In a full implementation,
     // we'd parse and execute each statement in the file.
     println!("File execution not yet implemented. Use REPL mode.");

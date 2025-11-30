@@ -78,6 +78,7 @@ pub struct TableSchema {
     pub name: String,
     
     /// Root page ID in the database file
+    #[allow(dead_code)]
     pub root_page: u32,
     
     /// Columns in the table

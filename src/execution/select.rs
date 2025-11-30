@@ -17,7 +17,7 @@ impl SelectExecutor {
     /// Execute a SELECT statement
     pub fn execute(
         plan: LogicalPlan,
-        catalog: &CatalogManager,
+        _catalog: &CatalogManager,
         pager: &mut Pager,
     ) -> Result<QueryResult> {
         // Optimize the plan

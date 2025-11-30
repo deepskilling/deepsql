@@ -16,12 +16,12 @@ impl InsertExecutor {
     pub fn execute(
         plan: LogicalPlan,
         catalog: &mut CatalogManager,
-        pager: &mut Pager,
+        _pager: &mut Pager,
     ) -> Result<QueryResult> {
         match plan {
-            LogicalPlan::Insert { table, columns, values } => {
+            LogicalPlan::Insert { table, columns: _columns, values } => {
                 // Verify table exists
-                let table_schema = catalog.get_table(&table)
+                let _table_schema = catalog.get_table(&table)
                     .ok_or_else(|| Error::Internal(format!("Table '{}' does not exist", table)))?;
                 
                 // For each value row, insert into table

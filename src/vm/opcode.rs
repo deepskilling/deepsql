@@ -5,6 +5,7 @@
 use crate::sql::ast::{Expr, OrderBy};
 
 /// VM Opcode
+#[allow(missing_docs)]
 #[derive(Debug, Clone)]
 pub enum Opcode {
     /// Open a cursor on a table
@@ -103,6 +104,7 @@ pub enum Opcode {
 }
 
 /// VM Program - sequence of opcodes
+#[allow(missing_docs)]
 #[derive(Debug, Clone)]
 pub struct Program {
     pub opcodes: Vec<Opcode>,

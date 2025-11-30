@@ -111,7 +111,7 @@ impl ExprEvaluator {
         }
     }
     
-    fn eval_function(&self, name: &str, args: &[Expr]) -> Result<Value> {
+    fn eval_function(&self, name: &str, _args: &[Expr]) -> Result<Value> {
         match name.to_uppercase().as_str() {
             "COUNT" => {
                 // Simple COUNT(*) implementation

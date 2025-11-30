@@ -61,7 +61,7 @@ pub fn checkpoint_full(pager: &mut Pager, wal: &mut Wal) -> Result<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::Page;
+    
     use tempfile::NamedTempFile;
     
     #[test]
