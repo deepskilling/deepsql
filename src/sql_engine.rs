@@ -15,6 +15,7 @@ use crate::sql::ast::Statement;
 use crate::planner::builder::PlanBuilder;
 use crate::planner::optimizer::Optimizer;
 use crate::planner::physical::PhysicalPlan;
+use crate::planner::compiler::VMCompiler;
 use crate::vm::executor::{Executor, QueryResult};
 use crate::vm::opcode::Program;
 
@@ -35,12 +36,17 @@ pub struct SqlEngine {
 
 impl SqlEngine {
     /// Create a new SQL engine
-    pub fn new(catalog: CatalogManager, pager: Pager) -> Self {
+    pub fn new(pager: Pager) -> Self {
         SqlEngine {
-            catalog,
+            catalog: CatalogManager::new(),
             pager,
             optimizer: Optimizer::new(),
         }
+    }
+    
+    /// Load catalog from database
+    pub fn load_catalog(&mut self) -> Result<()> {
+        self.catalog.load(&mut self.pager)
     }
     
     /// Execute a SQL statement
@@ -59,7 +65,8 @@ impl SqlEngine {
     /// ```
     pub fn execute(&mut self, sql: &str) -> Result<QueryResult> {
         // Step 1: Lex & Parse SQL to AST
-        let tokens = Lexer::new(sql).tokenize()?;
+        let mut lexer = Lexer::new(sql);
+        let tokens = lexer.tokenize();  // Returns Vec<Token>, not Result
         let mut parser = Parser::new(tokens);
         let statement = parser.parse_statement()?;
         
@@ -76,17 +83,17 @@ impl SqlEngine {
     /// Execute SELECT statement
     fn execute_select(&mut self, select: crate::sql::ast::SelectStatement) -> Result<QueryResult> {
         // Step 1: Build logical plan from AST
-        let logical_plan = PlanBuilder::new(&self.catalog)
-            .build_select_plan(select)?;
+        let statement = Statement::Select(select);
+        let logical_plan = PlanBuilder::new().build(statement)?;
         
         // Step 2: Optimize logical plan
-        let optimized = self.optimizer.optimize(logical_plan)?;
+        let optimized = self.optimizer.optimize(logical_plan);
         
         // Step 3: Convert to physical plan
         let physical_plan = self.logical_to_physical(optimized)?;
         
         // Step 4: Compile physical plan to VM opcodes
-        let program = self.compile_to_vm(physical_plan)?;
+        let program = self.compile_to_vm(&physical_plan)?;
         
         // Step 5: Execute VM program
         let mut executor = Executor::new();
@@ -118,19 +125,87 @@ impl SqlEngine {
     }
     
     /// Convert logical plan to physical plan
-    fn logical_to_physical(&self, _logical: crate::planner::logical::LogicalPlan) -> Result<PhysicalPlan> {
-        // TODO: Implement conversion
-        // For now, return a placeholder
-        Err(Error::Internal("Logical to physical conversion not yet implemented".to_string()))
+    fn logical_to_physical(&self, logical: crate::planner::logical::LogicalPlan) -> Result<PhysicalPlan> {
+        use crate::planner::logical::LogicalPlan as LP;
+        use crate::planner::physical::PhysicalPlan as PP;
+        
+        match logical {
+            LP::Scan { table, .. } => {
+                Ok(PP::TableScan { 
+                    table,
+                })
+            }
+            
+            LP::Filter { input, predicate } => {
+                let input_physical = self.logical_to_physical(*input)?;
+                Ok(PP::Filter {
+                    input: Box::new(input_physical),
+                    predicate,
+                })
+            }
+            
+            LP::Projection { input, expressions } => {
+                let input_physical = self.logical_to_physical(*input)?;
+                let (exprs, aliases): (Vec<_>, Vec<_>) = expressions
+                    .into_iter()
+                    .map(|pe| (pe.expr, pe.alias))
+                    .unzip();
+                Ok(PP::Project {
+                    input: Box::new(input_physical),
+                    expressions: exprs,
+                    aliases,
+                })
+            }
+            
+            LP::Sort { input, order_by } => {
+                let input_physical = self.logical_to_physical(*input)?;
+                Ok(PP::Sort {
+                    input: Box::new(input_physical),
+                    order_by,
+                })
+            }
+            
+            LP::Limit { input, limit, offset } => {
+                let input_physical = self.logical_to_physical(*input)?;
+                Ok(PP::Limit {
+                    input: Box::new(input_physical),
+                    limit,
+                    offset: offset.unwrap_or(0),
+                })
+            }
+            
+            LP::Insert { table, columns, values } => {
+                Ok(PP::Insert { table, columns, values })
+            }
+            
+            LP::Update { table, assignments, filter } => {
+                Ok(PP::Update { 
+                    table, 
+                    assignments, 
+                    filter,
+                })
+            }
+            
+            LP::Delete { table, filter } => {
+                Ok(PP::Delete { 
+                    table, 
+                    filter,
+                })
+            }
+            
+            LP::CreateTable { table, columns } => {
+                // CreateTable execution will be handled differently
+                // For now, return error
+                let _ = (table, columns);
+                Err(Error::Internal("CREATE TABLE execution not yet implemented".to_string()))
+            }
+        }
     }
     
     /// Compile physical plan to VM opcodes
-    fn compile_to_vm(&self, _physical: PhysicalPlan) -> Result<Program> {
-        // TODO: Implement compilation
-        // For now, return empty program
-        Ok(Program {
-            opcodes: vec![crate::vm::opcode::Opcode::Halt],
-        })
+    fn compile_to_vm(&self, physical: &PhysicalPlan) -> Result<Program> {
+        let mut compiler = VMCompiler::new();
+        compiler.compile(physical)
     }
 }
 
@@ -145,9 +220,7 @@ mod tests {
         let db_path = dir.path().join("test.db");
         
         let pager = Pager::open(db_path.to_str().unwrap()).unwrap();
-        let catalog = CatalogManager::new(pager.clone());
-        
-        let _engine = SqlEngine::new(catalog, pager);
+        let _engine = SqlEngine::new(pager);
         // Just verify it compiles and creates
     }
     
@@ -157,8 +230,7 @@ mod tests {
         let db_path = dir.path().join("test.db");
         
         let pager = Pager::open(db_path.to_str().unwrap()).unwrap();
-        let catalog = CatalogManager::new(pager.clone());
-        let mut engine = SqlEngine::new(catalog, pager);
+        let mut engine = SqlEngine::new(pager);
         
         // This will fail because execution isn't implemented yet,
         // but it should parse successfully

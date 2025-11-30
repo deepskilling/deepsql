@@ -27,3 +27,6 @@ pub use optimizer::Optimizer;
 pub use plan_cache::PlanCache;
 pub use statistics::{StatisticsManager, TableStatistics};
 
+/// VM opcode compiler
+pub mod compiler;
+
