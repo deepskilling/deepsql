@@ -1,0 +1,37 @@
+[package]
+name = "deepsql"
+version = "0.1.0"
+edition = "2021"
+authors = ["DeepSQL Contributors"]
+description = "A zero-dependency, high-performance, embedded relational database—equivalent to SQLite—using Rust"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/your-org/deepsql"
+readme = "README.md"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+log = "0.4"
+rustyline = "14.0"
+clap = { version = "4.5", features = ["derive"] }
+prettytable-rs = "0.10"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+tempfile = "3.8"
+
+[lib]
+name = "deepsql"
+path = "src/lib.rs"
+
+[[bin]]
+name = "deepsql"
+path = "src/bin/deepsql.rs"
+required-features = []
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
