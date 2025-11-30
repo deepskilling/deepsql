@@ -437,8 +437,11 @@ impl SqlEngine {
     }
     
     /// Execute CREATE INDEX statement
-    fn execute_create_index(&mut self, _idx: crate::sql::ast::CreateIndexStatement) -> Result<QueryResult> {
-        // TODO: Full implementation
+    fn execute_create_index(&mut self, idx: crate::sql::ast::CreateIndexStatement) -> Result<QueryResult> {
+        // TODO: Full implementation - create index in catalog
+        // For now, just acknowledge it was parsed
+        eprintln!("CREATE INDEX {} ON {} ({:?}) - parsed successfully", 
+                  idx.name, idx.table, idx.columns);
         Ok(QueryResult::with_affected(0))
     }
     
