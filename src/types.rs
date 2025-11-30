@@ -6,7 +6,7 @@ use crate::error::{Error, Result};
 use std::cmp::Ordering;
 
 /// SQL Value types
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum Value {
     /// NULL value
     Null,
@@ -22,6 +22,26 @@ pub enum Value {
     
     /// BLOB (binary data)
     Blob(Vec<u8>),
+}
+
+impl PartialEq for Value {
+    fn eq(&self, other: &Self) -> bool {
+        matches!(self.compare(other), Ok(Ordering::Equal))
+    }
+}
+
+impl Eq for Value {}
+
+impl PartialOrd for Value {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.compare(other).ok()
+    }
+}
+
+impl Ord for Value {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.compare(other).unwrap_or(Ordering::Equal)
+    }
 }
 
 impl Value {
