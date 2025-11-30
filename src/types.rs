@@ -239,10 +239,15 @@ impl Value {
 /// Value type enumeration
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ValueType {
+    /// NULL type
     Null,
+    /// INTEGER type
     Integer,
+    /// REAL (floating point) type
     Real,
+    /// TEXT (string) type
     Text,
+    /// BLOB (binary) type
     Blob,
 }
 

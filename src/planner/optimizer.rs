@@ -11,7 +11,7 @@
 /// - Cost-based optimization (basic)
 
 use crate::planner::logical::{LogicalPlan, ProjectionExpr};
-use crate::sql::ast::{Expr, Literal, BinaryOperator, OrderBy};
+use crate::sql::ast::{Expr, Literal, BinaryOperator};
 use crate::types::Value;
 use std::collections::HashSet;
 

@@ -36,8 +36,11 @@ pub enum Error {
     
     /// SQL parsing error
     ParseError {
+        /// The error message
         message: String,
+        /// Line number where error occurred
         line: usize,
+        /// Column number where error occurred
         column: usize,
     },
     

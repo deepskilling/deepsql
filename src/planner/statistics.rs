@@ -54,10 +54,15 @@ pub struct ColumnStatistics {
 /// Serializable wrapper for Value
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SerializableValue {
+    /// NULL value
     Null,
+    /// Integer value
     Integer(i64),
+    /// Real (floating point) value
     Real(f64),
+    /// Text (string) value
     Text(String),
+    /// Blob (binary) value
     Blob(Vec<u8>),
 }
 

@@ -7,13 +7,12 @@
 /// - Full expression evaluation
 
 use crate::error::{Error, Result};
-use crate::storage::{Pager, PageId};
+use crate::storage::Pager;
 use crate::storage::btree::{BTree, Cursor};
 use crate::storage::record::{Record, Value as RecordValue};
 use crate::types::Value;
 use crate::vm::evaluator::ExprEvaluator;
 use crate::vm::opcode::{Opcode, Program};
-use crate::sql::ast::{Expr, OrderDirection};
 use std::collections::HashMap;
 
 /// Query execution result
@@ -79,8 +78,8 @@ pub struct Executor {
     /// Active cursors (cursor_id -> state)
     cursors: HashMap<usize, CursorState>,
     
-    /// Next cursor ID
-    next_cursor_id: usize,
+    /// Next cursor ID (reserved for future cursor allocation)
+    _next_cursor_id: usize,
 }
 
 impl Executor {
@@ -91,7 +90,7 @@ impl Executor {
             evaluator: ExprEvaluator::new(),
             result: QueryResult::new(),
             cursors: HashMap::new(),
-            next_cursor_id: 0,
+            _next_cursor_id: 0,
         }
     }
     
@@ -106,7 +105,7 @@ impl Executor {
             match opcode {
                 Opcode::Halt => break,
                 
-                Opcode::TableScan { table, cursor_id } => {
+                Opcode::TableScan { table: _table, cursor_id } => {
                     // Open cursor on table's B+Tree
                     // For now, open the main table's root page
                     let root_page_id = 1; // Assuming table root is page 1

@@ -128,7 +128,7 @@ fn build_leaf_level(
 /// Build interior levels bottom-up
 fn build_interior_levels(
     pager: &mut Pager,
-    mut child_pages: Vec<PageId>,
+    child_pages: Vec<PageId>,
     config: &BulkLoadConfig,
 ) -> Result<PageId> {
     // If only one page, it's the root

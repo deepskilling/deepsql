@@ -173,9 +173,13 @@ impl Default for WorkloadAnalyzer {
 /// Workload statistics
 #[derive(Debug, Clone)]
 pub struct WorkloadStats {
+    /// Number of insert operations
     pub insert_count: u64,
+    /// Number of delete operations
     pub delete_count: u64,
+    /// Number of update operations
     pub update_count: u64,
+    /// Current rebalancing strategy
     pub strategy: RebalanceStrategy,
 }
 
@@ -184,8 +188,8 @@ pub struct RebalancePolicy {
     /// Workload analyzer
     analyzer: WorkloadAnalyzer,
     
-    /// Base threshold (for standard strategy)
-    base_threshold: f32,
+    /// Base threshold (for standard strategy) - reserved for future use
+    _base_threshold: f32,
     
     /// Hysteresis delta to prevent thrashing
     hysteresis: f32,
@@ -196,7 +200,7 @@ impl RebalancePolicy {
     pub fn new() -> Self {
         RebalancePolicy {
             analyzer: WorkloadAnalyzer::new(),
-            base_threshold: 0.5,
+            _base_threshold: 0.5,
             hysteresis: 0.05,
         }
     }
@@ -236,10 +240,12 @@ impl RebalancePolicy {
         self.analyzer.record_insert();
     }
     
+    /// Record a delete operation
     pub fn record_delete(&mut self) {
         self.analyzer.record_delete();
     }
     
+    /// Record an update operation
     pub fn record_update(&mut self) {
         self.analyzer.record_update();
     }

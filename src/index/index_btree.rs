@@ -12,8 +12,8 @@ use crate::types::Value;
 
 /// Index B+Tree - maps indexed values to row IDs
 pub struct IndexBTree {
-    /// Root page of the index
-    root_page: u32,
+    /// Root page of the index (reserved for future use)
+    _root_page: u32,
     
     /// Whether this is a unique index
     unique: bool,
@@ -22,7 +22,7 @@ pub struct IndexBTree {
 impl IndexBTree {
     /// Create a new index B+Tree
     pub fn new(_pager: &mut Pager, root_page: u32, unique: bool) -> Result<Self> {
-        Ok(IndexBTree { root_page, unique })
+        Ok(IndexBTree { _root_page: root_page, unique })
     }
     
     /// Insert an entry into the index

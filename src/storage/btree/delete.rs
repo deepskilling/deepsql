@@ -8,7 +8,7 @@
 
 use crate::error::{Error, Result};
 use crate::storage::{Pager, PageId};
-use super::{BTree, node::{BTreeNode, LeafCell, InteriorCell}};
+use super::{BTree, node::BTreeNode};
 
 const MIN_OCCUPANCY: f32 = 0.5; // Nodes should be at least 50% full
 
@@ -17,29 +17,29 @@ const MIN_OCCUPANCY: f32 = 0.5; // Nodes should be at least 50% full
 struct DeleteResult {
     /// Whether the node needs rebalancing (too empty)
     needs_rebalance: bool,
-    /// Whether the node was completely emptied
-    is_empty: bool,
+    /// Whether the node was completely emptied (reserved for future use)
+    _is_empty: bool,
 }
 
 impl DeleteResult {
     fn ok() -> Self {
         DeleteResult {
             needs_rebalance: false,
-            is_empty: false,
+            _is_empty: false,
         }
     }
     
     fn needs_rebalance() -> Self {
         DeleteResult {
             needs_rebalance: true,
-            is_empty: false,
+            _is_empty: false,
         }
     }
     
     fn empty() -> Self {
         DeleteResult {
             needs_rebalance: true,
-            is_empty: true,
+            _is_empty: true,
         }
     }
 }

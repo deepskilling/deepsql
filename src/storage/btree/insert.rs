@@ -6,7 +6,7 @@
 /// - Interior node splits
 /// - Recursive split propagation
 
-use crate::error::{Error, Result};
+use crate::error::Result;
 use crate::storage::{Pager, PageId, PageType};
 use crate::storage::record::Record;
 use super::{BTree, node::{BTreeNode, LeafCell, InteriorCell}};

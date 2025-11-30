@@ -4,7 +4,6 @@
 
 use crate::planner::physical::PhysicalPlan;
 use crate::planner::logical::LogicalPlan;
-use crate::error::Result;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::collections::hash_map::DefaultHasher;
@@ -19,8 +18,8 @@ struct CacheEntry {
     /// The cached physical plan
     plan: PhysicalPlan,
     
-    /// When this plan was cached
-    cached_at: u64,
+    /// When this plan was cached (reserved for future expiration logic)
+    _cached_at: u64,
     
     /// How many times this plan has been used
     hit_count: u64,
@@ -83,7 +82,7 @@ impl PlanCache {
         
         let entry = CacheEntry {
             plan: physical_plan,
-            cached_at: current_timestamp(),
+            _cached_at: current_timestamp(),
             hit_count: 0,
             last_used: current_timestamp(),
         };
