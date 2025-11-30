@@ -71,6 +71,46 @@ impl CatalogManager {
         &mut self.catalog
     }
     
+    /// Create an index
+    pub fn create_index(
+        &mut self,
+        name: String,
+        table_name: String,
+        columns: Vec<String>,
+        unique: bool,
+        pager: &mut Pager,
+    ) -> Result<()> {
+        // Check if index already exists
+        if self.catalog.get_index(&name).is_some() {
+            return Err(Error::Internal(format!("Index '{}' already exists", name)));
+        }
+        
+        // Check if table exists
+        if self.catalog.get_table(&table_name).is_none() {
+            return Err(Error::Internal(format!("Table '{}' does not exist", table_name)));
+        }
+        
+        // Allocate a page for the index B+Tree root
+        use crate::storage::page::PageType;
+        let page = pager.allocate_page(PageType::Leaf)?;
+        let root_page = page.id;
+        
+        // Create index schema
+        let index = IndexSchema {
+            name: name.clone(),
+            table_name,
+            root_page,
+            columns,
+            unique,
+        };
+        
+        // Add to catalog
+        self.catalog.add_index(index);
+        self.dirty = true;
+        
+        Ok(())
+    }
+    
     /// Update a table schema (e.g., for last_insert_id)
     pub fn update_table(&mut self, table: TableSchema) -> Result<()> {
         self.catalog.add_table(table); // add_table replaces if name exists

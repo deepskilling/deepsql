@@ -438,10 +438,21 @@ impl SqlEngine {
     
     /// Execute CREATE INDEX statement
     fn execute_create_index(&mut self, idx: crate::sql::ast::CreateIndexStatement) -> Result<QueryResult> {
-        // TODO: Full implementation - create index in catalog
-        // For now, just acknowledge it was parsed
-        eprintln!("CREATE INDEX {} ON {} ({:?}) - parsed successfully", 
+        // Create index in catalog
+        self.catalog.create_index(
+            idx.name.clone(),
+            idx.table.clone(),
+            idx.columns.clone(),
+            idx.unique,
+            &mut self.pager,
+        )?;
+        
+        // Save catalog
+        self.catalog.save(&mut self.pager)?;
+        
+        eprintln!("✅ Index '{}' created on table '{}' for columns {:?}", 
                   idx.name, idx.table, idx.columns);
+        
         Ok(QueryResult::with_affected(0))
     }
     
