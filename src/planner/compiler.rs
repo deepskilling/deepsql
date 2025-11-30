@@ -67,12 +67,19 @@ impl VMCompiler {
         
         #[cfg(test)]
         {
-            eprintln!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-            eprintln!("VM Program: {} opcodes", program.opcodes.len());
-            for (i, opcode) in program.opcodes.iter().enumerate() {
-                eprintln!("  {}: {:?}", i, opcode);
+            // Only print for UPDATE/DELETE to reduce noise
+            let has_update_or_delete = program.opcodes.iter().any(|op| {
+                matches!(op, Opcode::Update { .. } | Opcode::Delete { .. })
+            });
+            
+            if has_update_or_delete {
+                eprintln!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+                eprintln!("VM Program (UPDATE/DELETE): {} opcodes", program.opcodes.len());
+                for (i, opcode) in program.opcodes.iter().enumerate() {
+                    eprintln!("  {}: {:?}", i, opcode);
+                }
+                eprintln!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
             }
-            eprintln!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
         }
         
         Ok(program)
