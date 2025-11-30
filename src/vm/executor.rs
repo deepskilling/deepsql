@@ -176,9 +176,17 @@ impl Executor {
                     // Read column from current row
                     if let Some(state) = self.cursors.get(cursor_id) {
                         if let Some(record) = &state.current_record {
+                            #[cfg(test)]
+                            eprintln!("DEBUG Column: cursor={}, col_idx={}, total_values={}, values={:?}", 
+                                cursor_id, column_index, record.values.len(), record.values);
+                            
                             if *column_index < record.values.len() {
                                 // Convert RecordValue to Value
                                 let value = convert_record_value_to_value(&record.values[*column_index]);
+                                
+                                #[cfg(test)]
+                                eprintln!("DEBUG Column: Set register[{}] = {:?}", register, &value);
+                                
                                 self.registers[*register] = value;
                             } else {
                                 self.registers[*register] = Value::Null;

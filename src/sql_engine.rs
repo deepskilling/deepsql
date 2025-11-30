@@ -400,6 +400,11 @@ impl SqlEngine {
     /// Compile physical plan to VM opcodes
     fn compile_to_vm(&self, physical: &PhysicalPlan) -> Result<Program> {
         let mut compiler = VMCompiler::new();
+        
+        // Pass table schemas to compiler for column resolution
+        let table_schemas = self.get_table_schemas();
+        compiler.set_table_schemas(table_schemas);
+        
         compiler.compile(physical)
     }
 }

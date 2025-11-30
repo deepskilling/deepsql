@@ -23,6 +23,12 @@ pub struct VMCompiler {
     
     /// Current cursor ID (for the active scan)
     current_cursor: Option<usize>,
+    
+    /// Current table name (for column resolution)
+    current_table: Option<String>,
+    
+    /// Table schemas for column index lookup
+    table_schemas: std::collections::HashMap<String, crate::catalog::schema::TableSchema>,
 }
 
 impl VMCompiler {
@@ -33,7 +39,14 @@ impl VMCompiler {
             next_cursor: 0,
             next_register: 0,
             current_cursor: None,
+            current_table: None,
+            table_schemas: std::collections::HashMap::new(),
         }
+    }
+    
+    /// Set table schemas for column resolution
+    pub fn set_table_schemas(&mut self, schemas: std::collections::HashMap<String, crate::catalog::schema::TableSchema>) {
+        self.table_schemas = schemas;
     }
     
     /// Compile a physical plan to VM opcodes
@@ -48,9 +61,21 @@ impl VMCompiler {
         // Patch all placeholder jump targets
         self.patch_jump_targets(halt_position);
         
-        Ok(Program {
+        let program = Program {
             opcodes: std::mem::take(&mut self.opcodes),
-        })
+        };
+        
+        #[cfg(test)]
+        {
+            eprintln!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            eprintln!("VM Program: {} opcodes", program.opcodes.len());
+            for (i, opcode) in program.opcodes.iter().enumerate() {
+                eprintln!("  {}: {:?}", i, opcode);
+            }
+            eprintln!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+        }
+        
+        Ok(program)
     }
     
     /// Patch placeholder jump targets to point to the correct locations
@@ -116,6 +141,7 @@ impl VMCompiler {
         let cursor_id = self.next_cursor;
         self.next_cursor += 1;
         self.current_cursor = Some(cursor_id);
+        self.current_table = Some(table.to_string());
         
         // Open cursor on table
         self.opcodes.push(Opcode::TableScan {
@@ -213,10 +239,20 @@ impl VMCompiler {
             
             for (reg_idx, expr) in expressions.iter().enumerate() {
                 match expr {
-                    Expr::Column { table: _, name: _ } => {
-                        // For now, assume column name is the column index
-                        // In a full implementation, we'd look up the column index from the schema
-                        let column_index = reg_idx; // Simplified: use register index as column index
+                    Expr::Column { table: _, name } => {
+                        // Look up column index from table schema
+                        let column_index = if let Some(table_name) = &self.current_table {
+                            if let Some(schema) = self.table_schemas.get(table_name) {
+                                // Find column index by name
+                                schema.columns.iter()
+                                    .position(|col| &col.name == name)
+                                    .unwrap_or(reg_idx) // Fallback to register index
+                            } else {
+                                reg_idx // No schema, use register index
+                            }
+                        } else {
+                            reg_idx // No current table, use register index
+                        };
                         
                         if let Some(cursor_id) = self.current_cursor {
                             column_opcodes.push(Opcode::Column {
