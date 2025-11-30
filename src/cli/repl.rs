@@ -9,10 +9,9 @@ use crate::engine::Engine;
 use crate::error::Result;
 use crate::execution::{SelectExecutor, InsertExecutor, UpdateExecutor, DeleteExecutor};
 use crate::planner::builder::PlanBuilder;
-use crate::planner::logical::LogicalPlan;
 use crate::sql::{Lexer, Parser, Statement};
 use rustyline::error::ReadlineError;
-use rustyline::{DefaultEditor, Result as RustylineResult};
+use rustyline::DefaultEditor;
 use std::time::Instant;
 
 /// REPL state

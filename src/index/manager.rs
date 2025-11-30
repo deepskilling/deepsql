@@ -112,7 +112,6 @@ impl Default for IndexManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::catalog::schema::ColumnType;
     
     #[test]
     fn test_index_manager_creation() {

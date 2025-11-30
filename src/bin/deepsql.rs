@@ -62,7 +62,7 @@ fn main() {
 }
 
 fn execute_command(db_path: &str, sql: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let mut repl = Repl::new(db_path)?;
+    let repl = Repl::new(db_path)?;
     // Note: This is a simplified version. In a full implementation,
     // we'd expose execute_sql as public and call it directly.
     println!("Command execution not yet implemented. Use REPL mode.");

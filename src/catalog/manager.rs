@@ -5,7 +5,7 @@
 use crate::catalog::schema::*;
 use crate::error::{Error, Result};
 use crate::storage::pager::Pager;
-use crate::planner::logical::{LogicalPlan, ColumnSpec, DataType as PlanDataType};
+use crate::planner::logical::{LogicalPlan, DataType as PlanDataType};
 
 /// Special page IDs for system catalog
 const CATALOG_ROOT_PAGE: u32 = 1;
@@ -163,7 +163,7 @@ impl Default for CatalogManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::planner::logical::DataType as PlanDataType;
+    use crate::planner::logical::{ColumnSpec, DataType as PlanDataType};
     
     #[test]
     fn test_catalog_manager_creation() {

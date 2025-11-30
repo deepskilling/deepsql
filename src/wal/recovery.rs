@@ -116,7 +116,7 @@ fn apply_transaction(pager: &mut Pager, transaction: &Transaction) -> Result<()>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::{Page, PageType};
+    use crate::storage::PageType;
     use tempfile::NamedTempFile;
     
     #[test]
