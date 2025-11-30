@@ -1,10 +1,10 @@
 # DeepSQL SQL Implementation Roadmap
 ## Goal: Match SQLite Compatibility (22% → 95%)
 
-## Current Status: 40% ANSI SQL Compatible ✅ (Updated: Nov 30, 2025 - Evening)
+## Current Status: 45% ANSI SQL Compatible ✅ (Updated: Nov 30, 2025 - Late Evening)
 - ✅ Storage Engine: 9.5/10 (Production-ready)
-- ✅ SQL Parser: 8.5/10 (Can parse, compile, and execute DDL)
-- ⚠️ SQL Executor: 6.0/10 (Pipeline + CREATE TABLE working, INSERT 70%)
+- ✅ SQL Parser: 9.0/10 (Can parse, compile, and execute DDL/DML)
+- ✅ SQL Executor: 7.5/10 (CREATE + INSERT + SELECT working end-to-end!)
 
 ---
 
@@ -102,8 +102,8 @@ Output: 9 opcodes generated:
 
 **Next:** CREATE TABLE + INSERT to enable end-to-end SELECT
 
-#### A3: INSERT Statement Execution (Week 2) ⚠️ **70% COMPLETE**
-**Status: ⚠️ IN PROGRESS (Nov 30, 2025 - Compilation complete, needs catalog integration)**
+#### A3: INSERT Statement Execution (Week 2) ✅ **COMPLETE**
+**Status: ✅ COMPLETE (Nov 30, 2025 - Full end-to-end execution working!)**
 
 ```sql
 -- Target: Make these work
@@ -118,10 +118,11 @@ INSERT INTO users VALUES (2, 'Bob', 30);                    -- ✅ Compiles, ⚠
 - [x] ✅ VM opcode compilation for INSERT
 - [x] ✅ Expression evaluation to registers
 - [x] ✅ Multi-row INSERT support
-- [ ] ⏳ **Catalog integration with Executor** (BLOCKER)
-- [ ] ⏳ Insert into B+Tree with correct root_page_id
-- [ ] ⏳ Auto-increment for PRIMARY KEY
-- [ ] ⏳ Constraint validation (NOT NULL, UNIQUE) at execution time
+- [x] ✅ **Catalog integration with Executor** (COMPLETE!)
+- [x] ✅ Insert into B+Tree with correct root_page_id (COMPLETE!)
+- [x] ✅ Jump target patching for correct control flow (COMPLETE!)
+- [ ] ⏳ Auto-increment for PRIMARY KEY (deferred)
+- [ ] ⏳ Constraint validation (NOT NULL, UNIQUE) at execution time (deferred)
 
 **VM Program Generated** (for `INSERT INTO users VALUES (1, 'Alice', 25)`):
 ```

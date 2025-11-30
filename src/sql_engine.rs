@@ -95,9 +95,10 @@ impl SqlEngine {
         // Step 4: Compile physical plan to VM opcodes
         let program = self.compile_to_vm(&physical_plan)?;
         
-        // Step 5: Execute VM program
+        // Step 5: Execute VM program with table schemas
         let mut executor = Executor::new();
-        executor.execute(&program, &mut self.pager)
+        let table_schemas = self.get_table_schemas();
+        executor.execute(&program, &mut self.pager, &table_schemas)
     }
     
     /// Execute INSERT statement
@@ -137,11 +138,23 @@ impl SqlEngine {
         // Step 5: Compile to VM opcodes
         let program = self.compile_to_vm(&physical_plan)?;
         
-        // Step 6: Execute
+        // Step 6: Execute with table schemas
         let mut executor = Executor::new();
-        let result = executor.execute(&program, &mut self.pager)?;
+        let table_schemas = self.get_table_schemas();
+        let result = executor.execute(&program, &mut self.pager, &table_schemas)?;
         
         Ok(QueryResult::with_affected(result.rows_affected))
+    }
+    
+    /// Get table schemas as a HashMap for executor
+    fn get_table_schemas(&self) -> std::collections::HashMap<String, crate::catalog::schema::TableSchema> {
+        let mut schemas = std::collections::HashMap::new();
+        for table_name in self.catalog.list_tables() {
+            if let Some(schema) = self.catalog.get_table(&table_name) {
+                schemas.insert(table_name, schema.clone());
+            }
+        }
+        schemas
     }
     
     /// Execute UPDATE statement

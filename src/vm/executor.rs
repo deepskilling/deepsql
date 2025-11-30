@@ -13,6 +13,7 @@ use crate::storage::record::{Record, Value as RecordValue};
 use crate::types::Value;
 use crate::vm::evaluator::ExprEvaluator;
 use crate::vm::opcode::{Opcode, Program};
+use crate::catalog::schema::TableSchema;
 use std::collections::HashMap;
 
 /// Query execution result
@@ -94,8 +95,8 @@ impl Executor {
         }
     }
     
-    /// Execute a program
-    pub fn execute(&mut self, program: &Program, pager: &mut Pager) -> Result<QueryResult> {
+    /// Execute a program with table schemas
+    pub fn execute(&mut self, program: &Program, pager: &mut Pager, table_schemas: &HashMap<String, TableSchema>) -> Result<QueryResult> {
         let mut pc = 0; // Program counter
         
         // Execution loop
@@ -105,10 +106,12 @@ impl Executor {
             match opcode {
                 Opcode::Halt => break,
                 
-                Opcode::TableScan { table: _table, cursor_id } => {
-                    // Open cursor on table's B+Tree
-                    // For now, open the main table's root page
-                    let root_page_id = 1; // Assuming table root is page 1
+                Opcode::TableScan { table, cursor_id } => {
+                    // Look up table schema to get root_page_id
+                    let table_schema = table_schemas.get(table)
+                        .ok_or_else(|| Error::Internal(format!("Table '{}' not found in catalog", table)))?;
+                    
+                    let root_page_id = table_schema.root_page;
                     let btree = BTree::open(root_page_id)?;
                     let cursor = Cursor::new(pager, btree.root_page_id())?;
                     
@@ -248,7 +251,8 @@ impl Executor {
                     // Delete current row
                     if let Some(state) = self.cursors.get(cursor_id) {
                         if let Some(record) = &state.current_record {
-                            let root_page_id = 1; // Assuming table root is page 1
+                            // Use the B+Tree from the cursor state
+                            let root_page_id = state.btree.root_page_id();
                             let mut btree = BTree::open(root_page_id)?;
                             btree.delete(pager, &record.key)?;
                             self.result.rows_affected += 1;
@@ -379,7 +383,8 @@ mod tests {
         
         let temp_file = NamedTempFile::new().unwrap();
         let mut pager = Pager::open(temp_file.path()).unwrap();
-        let _result = executor.execute(&program, &mut pager).unwrap();
+        let table_schemas = HashMap::new(); // No tables needed for this test
+        let _result = executor.execute(&program, &mut pager, &table_schemas).unwrap();
         
         assert_eq!(executor.registers[0], Value::Integer(42));
     }
@@ -402,7 +407,8 @@ mod tests {
         
         let temp_file = NamedTempFile::new().unwrap();
         let mut pager = Pager::open(temp_file.path()).unwrap();
-        let result = executor.execute(&program, &mut pager).unwrap();
+        let table_schemas = HashMap::new(); // No tables needed for this test
+        let result = executor.execute(&program, &mut pager, &table_schemas).unwrap();
         
         assert_eq!(result.rows.len(), 1);
         assert_eq!(result.rows[0].len(), 3);

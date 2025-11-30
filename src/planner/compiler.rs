@@ -42,11 +42,32 @@ impl VMCompiler {
         self.compile_plan(plan)?;
         
         // Add final halt
+        let halt_position = self.opcodes.len();
         self.opcodes.push(Opcode::Halt);
+        
+        // Patch all placeholder jump targets
+        self.patch_jump_targets(halt_position);
         
         Ok(Program {
             opcodes: std::mem::take(&mut self.opcodes),
         })
+    }
+    
+    /// Patch placeholder jump targets to point to the correct locations
+    fn patch_jump_targets(&mut self, halt_position: usize) {
+        for i in 0..self.opcodes.len() {
+            match &mut self.opcodes[i] {
+                Opcode::Rewind { jump_if_empty, .. } if *jump_if_empty >= 1000 => {
+                    // Placeholder value (>= 1000), patch to halt
+                    *jump_if_empty = halt_position;
+                }
+                Opcode::Next { jump_if_done, .. } if *jump_if_done >= 1000 => {
+                    // Placeholder value, patch to halt
+                    *jump_if_done = halt_position;
+                }
+                _ => {}
+            }
+        }
     }
     
     /// Compile a physical plan node
@@ -102,11 +123,10 @@ impl VMCompiler {
             cursor_id,
         });
         
-        // Rewind to start
-        let end_label = self.opcodes.len() + 100; // Placeholder
+        // Rewind to start (placeholder jump target will be patched later)
         self.opcodes.push(Opcode::Rewind {
             cursor_id,
-            jump_if_empty: end_label,
+            jump_if_empty: 9999, // Placeholder - will be patched to halt_position
         });
         
         // Loop: read rows until done
@@ -119,10 +139,10 @@ impl VMCompiler {
             register_count: 1, // Placeholder
         });
         
-        // Next row
+        // Next row (placeholder jump target will be patched later)
         self.opcodes.push(Opcode::Next {
             cursor_id,
-            jump_if_done: self.opcodes.len() + 2,
+            jump_if_done: 9999, // Placeholder - will be patched to halt_position
         });
         
         // Jump back to loop start

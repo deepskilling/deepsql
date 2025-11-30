@@ -80,11 +80,8 @@ impl CatalogManager {
                     return Err(Error::Internal(format!("Table '{}' already exists", table)));
                 }
                 
-                // Allocate a new page for the table root
-                let root_page = self.allocate_table_page(pager)?;
-                
-                // Initialize the B+Tree root page
-                self.initialize_table_btree(pager, root_page)?;
+                // Allocate and initialize a new B+Tree root page
+                let root_page = self.initialize_table_btree(pager)?;
                 
                 // Create table schema
                 let mut table_schema = TableSchema::new(table.clone(), root_page);
@@ -138,25 +135,18 @@ impl CatalogManager {
         Ok(page_id)
     }
     
-    /// Initialize a B+Tree root page for a table
-    fn initialize_table_btree(&self, pager: &mut Pager, page_id: u32) -> Result<()> {
-        use crate::storage::btree::BTree;
-        use crate::storage::page::PageType;
+    /// Initialize a B+Tree root page for a table and return its page_id
+    fn initialize_table_btree(&self, pager: &mut Pager) -> Result<u32> {
+        use crate::storage::page::{PageType};
         
-        // Create a new B+Tree with this root page
-        // BTree::new() already allocates and initializes the root page
-        let _btree = BTree::new(pager)?;
+        // Allocate and initialize a leaf page for the table root
+        let page = pager.allocate_page(PageType::Leaf)?;
+        let page_id = page.id;
         
-        // Note: The actual root page created by BTree::new() might not match page_id
-        // In a full implementation, we should:
-        // 1. Use BTree::new() and get its root_page_id
-        // 2. OR manually create a leaf page at the specific page_id
-        // 3. Write proper initialization logic
+        // Write the page to ensure it's persisted
+        pager.write_page(page)?;
         
-        // For now, BTree::new() will handle the initialization
-        // The page_id tracking in catalog may need adjustment
-        
-        Ok(())
+        Ok(page_id)
     }
     
     /// Get table schema
