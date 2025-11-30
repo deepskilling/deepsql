@@ -336,24 +336,23 @@ impl Executor {
                     pc += 1;
                 }
                 
-                Opcode::Limit { limit, offset, counter_register } => {
-                    // Limit/offset implementation
-                    let counter = if let Value::Integer(c) = self.registers[*counter_register] {
-                        c as usize
-                    } else {
-                        0
-                    };
+                Opcode::Limit { limit, offset, counter_register: _ } => {
+                    // Apply LIMIT/OFFSET to accumulated result rows
+                    // This executes AFTER Sort (if present)
+                    let start = *offset;
+                    let end = offset + limit;
                     
-                    if counter < *offset {
-                        // Skip this row
-                        self.registers[*counter_register] = Value::Integer((counter + 1) as i64);
-                    } else if counter < offset + limit {
-                        // Include this row
-                        self.registers[*counter_register] = Value::Integer((counter + 1) as i64);
+                    if start >= self.result.rows.len() {
+                        // Offset beyond result set
+                        self.result.rows.clear();
+                    } else if end >= self.result.rows.len() {
+                        // Limit extends beyond result set
+                        self.result.rows = self.result.rows.split_off(start);
                     } else {
-                        // Exceeded limit, halt
-                        break;
+                        // Normal case: slice the range
+                        self.result.rows = self.result.rows[start..end].to_vec();
                     }
+                    
                     pc += 1;
                 }
                 

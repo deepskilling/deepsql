@@ -133,18 +133,28 @@ impl VMCompiler {
             }
         }
         
-        // Check if there's a Sort opcode before Halt
-        let mut sort_position = None;
+        // Find post-loop opcodes (Sort, Limit) before Halt
+        let mut first_post_loop_position = halt_position;
+        
+        // Check for Sort opcode
         for i in 0..halt_position {
             if matches!(self.opcodes[i], Opcode::Sort { .. }) {
-                sort_position = Some(i);
-                break; // Use first Sort found
+                first_post_loop_position = i;
+                break;
+            }
+        }
+        
+        // Check for Limit opcode (might come before Sort)
+        for i in 0..first_post_loop_position {
+            if matches!(self.opcodes[i], Opcode::Limit { .. }) {
+                first_post_loop_position = i;
+                break;
             }
         }
         
         // Determine where Next should jump when done
-        // If there's a Sort before Halt, jump to Sort; otherwise jump to Halt
-        let next_jump_target = sort_position.unwrap_or(halt_position);
+        // Jump to first post-loop operation (Limit or Sort) or Halt
+        let next_jump_target = first_post_loop_position;
         
         // Second pass: apply all patches
         for i in 0..self.opcodes.len() {
@@ -625,15 +635,30 @@ impl VMCompiler {
         // First compile input
         self.compile_plan(input)?;
         
-        // Add limit instruction
-        let counter_register = self.next_register;
-        self.next_register += 1;
+        // Find Halt opcode and insert Limit BEFORE it (like Sort)
+        let mut halt_idx = None;
+        for (i, opcode) in self.opcodes.iter().enumerate() {
+            if matches!(opcode, Opcode::Halt) {
+                halt_idx = Some(i);
+                break;
+            }
+        }
         
-        self.opcodes.push(Opcode::Limit { 
-            limit, 
-            offset, 
-            counter_register,
-        });
+        if let Some(idx) = halt_idx {
+            // Insert Limit before Halt (after Sort if present)
+            self.opcodes.insert(idx, Opcode::Limit {
+                limit,
+                offset,
+                counter_register: 0, // Not used anymore
+            });
+        } else {
+            // No Halt yet, just append
+            self.opcodes.push(Opcode::Limit {
+                limit,
+                offset,
+                counter_register: 0,
+            });
+        }
         
         Ok(())
     }
