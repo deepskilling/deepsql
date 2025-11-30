@@ -512,19 +512,83 @@ impl Executor {
     }
     
     /// Sort result rows based on ORDER BY clauses
-    fn sort_results_by_order_by(&mut self, _order_by: &[crate::sql::ast::OrderBy]) -> Result<()> {
-        // Simplified: Sort by first column ascending
-        // Full implementation would evaluate ORDER BY expressions
-        self.result.rows.sort_by(|a, b| {
-            if a.is_empty() || b.is_empty() {
-                return std::cmp::Ordering::Equal;
+    fn sort_results_by_order_by(&mut self, order_by: &[crate::sql::ast::OrderBy]) -> Result<()> {
+        use crate::sql::ast::OrderDirection;
+        
+        if order_by.is_empty() {
+            return Ok(());
+        }
+        
+        // Enhanced multi-column sorting with ASC/DESC and NULL handling
+        self.result.rows.sort_by(|row_a, row_b| {
+            for order_spec in order_by {
+                // Evaluate the ORDER BY expression for each row
+                let val_a = evaluate_order_by_expr(&order_spec.expr, row_a);
+                let val_b = evaluate_order_by_expr(&order_spec.expr, row_b);
+                
+                // Compare values with NULL handling
+                let cmp = match (&val_a, &val_b) {
+                    (Value::Null, Value::Null) => std::cmp::Ordering::Equal,
+                    (Value::Null, _) => std::cmp::Ordering::Less, // NULLs sort first
+                    (_, Value::Null) => std::cmp::Ordering::Greater,
+                    _ => val_a.cmp(&val_b),
+                };
+                
+                // Apply sort direction
+                let final_cmp = match order_spec.direction {
+                    OrderDirection::Asc => cmp,
+                    OrderDirection::Desc => cmp.reverse(),
+                };
+                
+                // If not equal, return this comparison; otherwise continue to next column
+                if final_cmp != std::cmp::Ordering::Equal {
+                    return final_cmp;
+                }
             }
-            a[0].cmp(&b[0])
+            
+            // All columns equal
+            std::cmp::Ordering::Equal
         });
         
         Ok(())
     }
-    
+}
+
+/// Evaluate ORDER BY expression in the context of a result row (standalone helper)
+fn evaluate_order_by_expr(expr: &crate::sql::ast::Expr, row: &[Value]) -> Value {
+    use crate::sql::ast::Expr;
+    match expr {
+        Expr::Column { name, .. } => {
+            // Try to parse column name as zero-based index
+            // The compiler should convert column names to indices
+            if let Ok(idx) = name.parse::<usize>() {
+                if idx < row.len() {
+                    return row[idx].clone();
+                }
+            }
+            // If not a number, return first column as fallback
+            if !row.is_empty() {
+                row[0].clone()
+            } else {
+                Value::Null
+            }
+        }
+        Expr::Literal(lit) => {
+            // Convert literal to Value
+            use crate::sql::ast::Literal;
+            match lit {
+                Literal::Integer(i) => Value::Integer(*i),
+                Literal::Real(r) => Value::Real(*r),
+                Literal::String(s) => Value::Text(s.clone()),
+                Literal::Null => Value::Null,
+                Literal::Boolean(b) => Value::Integer(if *b { 1 } else { 0 }),
+            }
+        }
+        _ => Value::Null, // For other expressions, return NULL for now
+        }
+    }
+
+impl Executor {
     /// Execute a simple SELECT query (simplified for Phase 4)
     pub fn execute_select(&mut self, _table: &str, _pager: &mut Pager) -> Result<QueryResult> {
         // Simplified implementation that returns mock data

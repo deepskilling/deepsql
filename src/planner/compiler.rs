@@ -133,6 +133,19 @@ impl VMCompiler {
             }
         }
         
+        // Check if there's a Sort opcode before Halt
+        let mut sort_position = None;
+        for i in 0..halt_position {
+            if matches!(self.opcodes[i], Opcode::Sort { .. }) {
+                sort_position = Some(i);
+                break; // Use first Sort found
+            }
+        }
+        
+        // Determine where Next should jump when done
+        // If there's a Sort before Halt, jump to Sort; otherwise jump to Halt
+        let next_jump_target = sort_position.unwrap_or(halt_position);
+        
         // Second pass: apply all patches
         for i in 0..self.opcodes.len() {
             match &mut self.opcodes[i] {
@@ -141,8 +154,8 @@ impl VMCompiler {
                     *jump_if_empty = halt_position;
                 }
                 Opcode::Next { jump_if_done, .. } if *jump_if_done >= 1000 => {
-                    // Placeholder value, patch to halt
-                    *jump_if_done = halt_position;
+                    // Placeholder value, patch to Sort (if exists) or Halt
+                    *jump_if_done = next_jump_target;
                 }
                 Opcode::Filter { jump_target, .. } if *jump_target >= 1000 => {
                     // Apply the filter patch we calculated earlier
@@ -550,10 +563,59 @@ impl VMCompiler {
         // First compile input
         self.compile_plan(input)?;
         
-        // Add sort instruction
-        self.opcodes.push(Opcode::Sort {
-            order_by: order_by.to_vec(),
-        });
+        // Resolve column names in ORDER BY to indices based on SELECT projection
+        // For SELECT *, the columns are in schema order
+        // For SELECT col1, col2, they're in projection order
+        let resolved_order_by: Vec<OrderBy> = order_by.iter().map(|ob| {
+            let resolved_expr = if let Expr::Column { name, .. } = &ob.expr {
+                // Try to resolve column name to index
+                if let Some(table_name) = &self.current_table {
+                    if let Some(schema) = self.table_schemas.get(table_name) {
+                        if let Some(col_idx) = schema.columns.iter().position(|col| &col.name == name) {
+                            // Convert to Expr::Column with index as name
+                            Expr::Column {
+                                table: None,
+                                name: col_idx.to_string(),
+                            }
+                        } else {
+                            ob.expr.clone() // Column not found, keep original
+                        }
+                    } else {
+                        ob.expr.clone() // No schema, keep original
+                    }
+                } else {
+                    ob.expr.clone() // No table, keep original
+                }
+            } else {
+                ob.expr.clone() // Not a column, keep original
+            };
+            
+            OrderBy {
+                expr: resolved_expr,
+                direction: ob.direction,
+            }
+        }).collect();
+        
+        // Find the Halt opcode and insert Sort BEFORE it
+        let mut halt_idx = None;
+        for (i, opcode) in self.opcodes.iter().enumerate() {
+            if matches!(opcode, Opcode::Halt) {
+                halt_idx = Some(i);
+                break;
+            }
+        }
+        
+        if let Some(idx) = halt_idx {
+            // Insert Sort before Halt
+            self.opcodes.insert(idx, Opcode::Sort {
+                order_by: resolved_order_by,
+            });
+        } else {
+            // No Halt yet, just append
+            self.opcodes.push(Opcode::Sort {
+                order_by: resolved_order_by,
+            });
+        }
         
         Ok(())
     }
