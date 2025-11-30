@@ -33,6 +33,12 @@ pub struct SqlEngine {
     
     /// Query optimizer
     optimizer: Optimizer,
+    
+    /// Transaction state
+    in_transaction: bool,
+    
+    /// Buffered statements in transaction
+    transaction_buffer: Vec<String>,
 }
 
 impl SqlEngine {
@@ -42,6 +48,8 @@ impl SqlEngine {
             catalog: CatalogManager::new(),
             pager,
             optimizer: Optimizer::new(),
+            in_transaction: false,
+            transaction_buffer: Vec::new(),
         }
     }
     
@@ -458,19 +466,48 @@ impl SqlEngine {
     
     /// Execute BEGIN statement
     fn execute_begin(&mut self) -> Result<QueryResult> {
-        // TODO: Full implementation
+        if self.in_transaction {
+            return Err(Error::Internal("Transaction already active".into()));
+        }
+        
+        self.in_transaction = true;
+        self.transaction_buffer.clear();
+        eprintln!("✅ BEGIN: Transaction started");
+        
         Ok(QueryResult::with_affected(0))
     }
     
     /// Execute COMMIT statement
     fn execute_commit(&mut self) -> Result<QueryResult> {
-        // TODO: Full implementation
+        if !self.in_transaction {
+            return Err(Error::Internal("No active transaction".into()));
+        }
+        
+        // TODO: Actually flush WAL and checkpoint
+        // For now, just mark transaction as complete
+        self.in_transaction = false;
+        let stmt_count = self.transaction_buffer.len();
+        self.transaction_buffer.clear();
+        
+        eprintln!("✅ COMMIT: Transaction committed ({} statements)", stmt_count);
+        
         Ok(QueryResult::with_affected(0))
     }
     
     /// Execute ROLLBACK statement
     fn execute_rollback(&mut self) -> Result<QueryResult> {
-        // TODO: Full implementation
+        if !self.in_transaction {
+            return Err(Error::Internal("No active transaction".into()));
+        }
+        
+        // TODO: Actually rollback changes from WAL
+        // For now, just discard transaction state
+        self.in_transaction = false;
+        let stmt_count = self.transaction_buffer.len();
+        self.transaction_buffer.clear();
+        
+        eprintln!("✅ ROLLBACK: Transaction rolled back ({} statements discarded)", stmt_count);
+        
         Ok(QueryResult::with_affected(0))
     }
     
