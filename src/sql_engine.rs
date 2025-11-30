@@ -15,6 +15,7 @@ use crate::sql::ast::Statement;
 use crate::planner::builder::PlanBuilder;
 use crate::planner::optimizer::Optimizer;
 use crate::planner::physical::PhysicalPlan;
+use crate::planner::logical::LogicalPlan;
 use crate::planner::compiler::VMCompiler;
 use crate::vm::executor::{Executor, QueryResult};
 use crate::vm::opcode::Program;
@@ -84,7 +85,10 @@ impl SqlEngine {
     fn execute_select(&mut self, select: crate::sql::ast::SelectStatement) -> Result<QueryResult> {
         // Step 1: Build logical plan from AST
         let statement = Statement::Select(select);
-        let logical_plan = PlanBuilder::new().build(statement)?;
+        let mut logical_plan = PlanBuilder::new().build(statement)?;
+        
+        // Step 1.5: Expand SELECT * wildcards to actual column names
+        logical_plan = self.expand_wildcards(logical_plan)?;
         
         // Step 2: Optimize logical plan
         let optimized = self.optimizer.optimize(logical_plan);
@@ -99,6 +103,94 @@ impl SqlEngine {
         let mut executor = Executor::new();
         let table_schemas = self.get_table_schemas();
         executor.execute(&program, &mut self.pager, &table_schemas)
+    }
+    
+    /// Expand SELECT * wildcards to actual column names
+    fn expand_wildcards(&self, plan: LogicalPlan) -> Result<LogicalPlan> {
+        use crate::sql::ast::Expr;
+        use crate::planner::logical::ProjectionExpr;
+        
+        match plan {
+            LogicalPlan::Projection { input, expressions } => {
+                // Check if any expression is a wildcard (SELECT *)
+                let has_wildcard = expressions.iter().any(|proj| {
+                    matches!(&proj.expr, Expr::Column { name, .. } if name == "*")
+                });
+                
+                if has_wildcard {
+                    // Extract table name from the scan
+                    let table_name = self.extract_table_name(&input)?;
+                    
+                    // Get table schema
+                    let schema = self.catalog.get_table(&table_name)
+                        .ok_or_else(|| Error::Internal(format!("Table '{}' not found in catalog", table_name)))?;
+                    
+                    // Expand wildcard to actual columns
+                    let mut expanded_exprs = Vec::new();
+                    for proj in expressions {
+                        if matches!(&proj.expr, Expr::Column { name, .. } if name == "*") {
+                            // Replace * with all columns from table
+                            for column in &schema.columns {
+                                expanded_exprs.push(ProjectionExpr {
+                                    expr: Expr::Column {
+                                        table: None,
+                                        name: column.name.clone(),
+                                    },
+                                    alias: None,
+                                });
+                            }
+                        } else {
+                            // Keep non-wildcard expressions as-is
+                            expanded_exprs.push(proj);
+                        }
+                    }
+                    
+                    Ok(LogicalPlan::Projection {
+                        input: Box::new(self.expand_wildcards(*input)?),
+                        expressions: expanded_exprs,
+                    })
+                } else {
+                    // No wildcard, recurse on input
+                    Ok(LogicalPlan::Projection {
+                        input: Box::new(self.expand_wildcards(*input)?),
+                        expressions,
+                    })
+                }
+            }
+            LogicalPlan::Filter { input, predicate } => {
+                Ok(LogicalPlan::Filter {
+                    input: Box::new(self.expand_wildcards(*input)?),
+                    predicate,
+                })
+            }
+            LogicalPlan::Sort { input, order_by } => {
+                Ok(LogicalPlan::Sort {
+                    input: Box::new(self.expand_wildcards(*input)?),
+                    order_by,
+                })
+            }
+            LogicalPlan::Limit { input, limit, offset } => {
+                Ok(LogicalPlan::Limit {
+                    input: Box::new(self.expand_wildcards(*input)?),
+                    limit,
+                    offset,
+                })
+            }
+            // Base cases - no wildcard possible
+            _ => Ok(plan),
+        }
+    }
+    
+    /// Extract table name from a logical plan (find Scan node)
+    fn extract_table_name(&self, plan: &LogicalPlan) -> Result<String> {
+        match plan {
+            LogicalPlan::Scan { table, .. } => Ok(table.clone()),
+            LogicalPlan::Filter { input, .. } => self.extract_table_name(input),
+            LogicalPlan::Projection { input, .. } => self.extract_table_name(input),
+            LogicalPlan::Sort { input, .. } => self.extract_table_name(input),
+            LogicalPlan::Limit { input, .. } => self.extract_table_name(input),
+            _ => Err(Error::Internal("Cannot extract table name from plan".to_string())),
+        }
     }
     
     /// Execute INSERT statement with constraint validation and auto-increment
@@ -295,15 +387,49 @@ impl SqlEngine {
     }
     
     /// Execute UPDATE statement
-    fn execute_update(&mut self, _update: crate::sql::ast::UpdateStatement) -> Result<QueryResult> {
-        // TODO: Phase A Week 2-3
-        Err(Error::Internal("UPDATE not yet implemented".to_string()))
+    fn execute_update(&mut self, update: crate::sql::ast::UpdateStatement) -> Result<QueryResult> {
+        // Step 1: Build logical plan
+        let statement = Statement::Update(update);
+        let logical_plan = PlanBuilder::new().build(statement)?;
+        
+        // Step 2: Optimize
+        let optimized = self.optimizer.optimize(logical_plan);
+        
+        // Step 3: Convert to physical plan
+        let physical_plan = self.logical_to_physical(optimized)?;
+        
+        // Step 4: Compile to VM opcodes
+        let program = self.compile_to_vm(&physical_plan)?;
+        
+        // Step 5: Execute
+        let mut executor = Executor::new();
+        let table_schemas = self.get_table_schemas();
+        let result = executor.execute(&program, &mut self.pager, &table_schemas)?;
+        
+        Ok(QueryResult::with_affected(result.rows_affected))
     }
     
     /// Execute DELETE statement
-    fn execute_delete(&mut self, _delete: crate::sql::ast::DeleteStatement) -> Result<QueryResult> {
-        // TODO: Phase A Week 3
-        Err(Error::Internal("DELETE not yet implemented".to_string()))
+    fn execute_delete(&mut self, delete: crate::sql::ast::DeleteStatement) -> Result<QueryResult> {
+        // Step 1: Build logical plan
+        let statement = Statement::Delete(delete);
+        let logical_plan = PlanBuilder::new().build(statement)?;
+        
+        // Step 2: Optimize
+        let optimized = self.optimizer.optimize(logical_plan);
+        
+        // Step 3: Convert to physical plan
+        let physical_plan = self.logical_to_physical(optimized)?;
+        
+        // Step 4: Compile to VM opcodes
+        let program = self.compile_to_vm(&physical_plan)?;
+        
+        // Step 5: Execute
+        let mut executor = Executor::new();
+        let table_schemas = self.get_table_schemas();
+        let result = executor.execute(&program, &mut self.pager, &table_schemas)?;
+        
+        Ok(QueryResult::with_affected(result.rows_affected))
     }
     
     /// Execute CREATE TABLE statement
