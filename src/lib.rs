@@ -56,3 +56,6 @@ pub use engine::Engine;
 #[cfg(feature = "python")]
 pub mod python;
 
+/// SQL execution engine
+pub mod sql_engine;
+
