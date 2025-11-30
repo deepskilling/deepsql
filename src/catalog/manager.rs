@@ -71,6 +71,13 @@ impl CatalogManager {
         &mut self.catalog
     }
     
+    /// Update a table schema (e.g., for last_insert_id)
+    pub fn update_table(&mut self, table: TableSchema) -> Result<()> {
+        self.catalog.add_table(table); // add_table replaces if name exists
+        self.dirty = true;
+        Ok(())
+    }
+    
     /// Execute CREATE TABLE statement
     pub fn create_table(&mut self, plan: &LogicalPlan, pager: &mut Pager) -> Result<()> {
         match plan {

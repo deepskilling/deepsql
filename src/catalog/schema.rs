@@ -86,6 +86,10 @@ pub struct TableSchema {
     
     /// Primary key column index (if any)
     pub primary_key: Option<usize>,
+    
+    /// Last auto-increment ID used (for INTEGER PRIMARY KEY)
+    #[serde(default)]
+    pub last_insert_id: i64,
 }
 
 impl TableSchema {
@@ -96,6 +100,7 @@ impl TableSchema {
             root_page,
             columns: Vec::new(),
             primary_key: None,
+            last_insert_id: 0,
         }
     }
     

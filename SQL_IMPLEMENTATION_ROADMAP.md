@@ -118,11 +118,12 @@ INSERT INTO users VALUES (2, 'Bob', 30);                    -- ✅ Compiles, ⚠
 - [x] ✅ VM opcode compilation for INSERT
 - [x] ✅ Expression evaluation to registers
 - [x] ✅ Multi-row INSERT support
+
 - [x] ✅ **Catalog integration with Executor** (COMPLETE!)
 - [x] ✅ Insert into B+Tree with correct root_page_id (COMPLETE!)
 - [x] ✅ Jump target patching for correct control flow (COMPLETE!)
-- [ ] ⏳ Auto-increment for PRIMARY KEY (deferred)
-- [ ] ⏳ Constraint validation (NOT NULL, UNIQUE) at execution time (deferred)
+- [x] ✅ **Auto-increment for INTEGER PRIMARY KEY** (COMPLETE!)
+- [x] ✅ **Constraint validation (NOT NULL, UNIQUE) at execution time** (COMPLETE!)
 
 **VM Program Generated** (for `INSERT INTO users VALUES (1, 'Alice', 25)`):
 ```

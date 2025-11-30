@@ -101,32 +101,121 @@ impl SqlEngine {
         executor.execute(&program, &mut self.pager, &table_schemas)
     }
     
-    /// Execute INSERT statement
-    fn execute_insert(&mut self, insert: crate::sql::ast::InsertStatement) -> Result<QueryResult> {
-        // Step 1: Get table schema from catalog
-        let table_schema = self.catalog.get_table(&insert.table)
-            .ok_or_else(|| Error::Internal(format!("Table '{}' does not exist", insert.table)))?;
+    /// Execute INSERT statement with constraint validation and auto-increment
+    fn execute_insert(&mut self, mut insert: crate::sql::ast::InsertStatement) -> Result<QueryResult> {
+        use crate::sql::ast::{Expr, Literal};
         
-        // Step 2: Validate column count
-        let _column_count = if let Some(ref cols) = insert.columns {
-            // Specific columns provided
-            if cols.len() != insert.values[0].len() {
-                return Err(Error::Internal(
-                    format!("Column count mismatch: {} columns specified but {} values provided",
-                            cols.len(), insert.values[0].len())
-                ));
+        #[cfg(test)]
+        eprintln!("DEBUG: execute_insert called for table '{}'", insert.table);
+        
+        // Step 1: Get table schema from catalog
+        let table_name = insert.table.clone();
+        let table_schema = self.catalog.get_table(&table_name)
+            .ok_or_else(|| Error::Internal(format!("Table '{}' does not exist", table_name)))?
+            .clone(); // Clone to avoid borrow issues
+        
+        #[cfg(test)]
+        eprintln!("DEBUG: Table schema columns:");
+        #[cfg(test)]
+        for (idx, col) in table_schema.columns.iter().enumerate() {
+            eprintln!("  [{}] {} - nullable={}, primary_key={}", 
+                idx, col.name, col.nullable, col.primary_key);
+        }
+        
+        // Step 2: Process each row for validation and auto-increment
+        let mut processed_rows = Vec::new();
+        let mut last_id = table_schema.last_insert_id;
+        
+        for row_values in &insert.values {
+            // Determine column mapping
+            let column_indices: Vec<usize> = if let Some(ref cols) = insert.columns {
+                // Specific columns provided - map to indices
+                cols.iter()
+                    .map(|col_name| {
+                        table_schema.columns.iter()
+                            .position(|c| &c.name == col_name)
+                            .ok_or_else(|| Error::Internal(format!("Column '{}' not found", col_name)))
+                    })
+                    .collect::<Result<Vec<_>>>()?
+            } else {
+                // All columns in order
+                (0..table_schema.columns.len()).collect()
+            };
+            
+            // Validate value count
+            if column_indices.len() != row_values.len() {
+                return Err(Error::Internal(format!(
+                    "Column count mismatch: {} columns but {} values",
+                    column_indices.len(), row_values.len()
+                )));
             }
-            cols.len()
-        } else {
-            // All columns
-            if table_schema.columns.len() != insert.values[0].len() {
-                return Err(Error::Internal(
-                    format!("Column count mismatch: table has {} columns but {} values provided",
-                            table_schema.columns.len(), insert.values[0].len())
-                ));
+            
+            // Build full row with default/auto-increment values
+            let mut full_row = vec![Expr::Literal(Literal::Null); table_schema.columns.len()];
+            
+            for (col_idx, value) in column_indices.iter().zip(row_values.iter()) {
+                full_row[*col_idx] = value.clone();
             }
-            table_schema.columns.len()
-        };
+            
+            // Handle auto-increment for INTEGER PRIMARY KEY
+            if let Some(pk_idx) = table_schema.primary_key {
+                let pk_column = &table_schema.columns[pk_idx];
+                
+                // Check if PRIMARY KEY is INTEGER and value is NULL or not provided
+                if matches!(pk_column.data_type, crate::catalog::schema::ColumnType::Integer) {
+                    let is_null_or_missing = matches!(&full_row[pk_idx], Expr::Literal(Literal::Null));
+                    
+                    if is_null_or_missing {
+                        // Auto-increment: generate next ID
+                        last_id += 1;
+                        full_row[pk_idx] = Expr::Literal(Literal::Integer(last_id));
+                    }
+                }
+            }
+            
+            // Validate NOT NULL constraints
+            for (idx, value_expr) in full_row.iter().enumerate() {
+                let column = &table_schema.columns[idx];
+                
+                #[cfg(test)]
+                eprintln!("DEBUG: Checking column '{}' - nullable={}, value={:?}", 
+                    column.name, column.nullable, value_expr);
+                
+                // nullable = true means NULL is allowed, so !nullable means NOT NULL
+                if !column.nullable {
+                    // Check if the value is NULL
+                    let is_null = match value_expr {
+                        Expr::Literal(Literal::Null) => true,
+                        _ => false,
+                    };
+                    
+                    #[cfg(test)]
+                    eprintln!("DEBUG: Column '{}' is NOT NULL, value is_null={}", column.name, is_null);
+                    
+                    if is_null {
+                        return Err(Error::Internal(format!(
+                            "NOT NULL constraint violated for column '{}'. Column is marked as NOT NULL (nullable={})",
+                            column.name, column.nullable
+                        )));
+                    }
+                }
+            }
+            
+            processed_rows.push(full_row);
+        }
+        
+        // Update last_insert_id in catalog if it changed
+        if last_id != table_schema.last_insert_id {
+            // Update the schema in the catalog
+            let mut updated_schema = table_schema.clone();
+            updated_schema.last_insert_id = last_id;
+            self.catalog.update_table(updated_schema)?;
+            // Save catalog to persist the change
+            self.catalog.save(&mut self.pager)?;
+        }
+        
+        // Replace original values with processed rows
+        insert.values = processed_rows;
         
         // Step 3: Convert to logical plan
         let statement = Statement::Insert(insert);
@@ -143,7 +232,55 @@ impl SqlEngine {
         let table_schemas = self.get_table_schemas();
         let result = executor.execute(&program, &mut self.pager, &table_schemas)?;
         
+        // Step 7: Validate UNIQUE constraints after insert
+        self.validate_unique_constraints(&table_name, &table_schema)?;
+        
         Ok(QueryResult::with_affected(result.rows_affected))
+    }
+    
+    /// Validate UNIQUE constraints for a table
+    fn validate_unique_constraints(&mut self, table_name: &str, table_schema: &crate::catalog::schema::TableSchema) -> Result<()> {
+        use crate::storage::btree::BTree;
+        use std::collections::HashSet;
+        
+        // For each column with UNIQUE constraint
+        for (col_idx, column) in table_schema.columns.iter().enumerate() {
+            if !column.unique && table_schema.primary_key != Some(col_idx) {
+                continue; // Skip non-unique columns
+            }
+            
+            // Scan table and collect values for this column
+            let mut values_seen = HashSet::new();
+            let btree = BTree::open(table_schema.root_page)?;
+            let mut cursor = crate::storage::btree::Cursor::new(&mut self.pager, btree.root_page_id())?;
+            
+            loop {
+                match cursor.current(&mut self.pager) {
+                    Ok(record) => {
+                        if col_idx < record.values.len() {
+                            // Convert to string for comparison (simple approach)
+                            let value_str = format!("{:?}", record.values[col_idx]);
+                            
+                            if !values_seen.insert(value_str.clone()) {
+                                // Duplicate found!
+                                return Err(Error::Internal(format!(
+                                    "UNIQUE constraint violated for column '{}': duplicate value",
+                                    column.name
+                                )));
+                            }
+                        }
+                        
+                        // Move to next record
+                        if cursor.next(&mut self.pager).is_err() {
+                            break;
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+        }
+        
+        Ok(())
     }
     
     /// Get table schemas as a HashMap for executor
