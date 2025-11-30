@@ -52,3 +52,7 @@ pub mod engine;
 
 pub use engine::Engine;
 
+/// Python bindings (optional)
+#[cfg(feature = "python")]
+pub mod python;
+

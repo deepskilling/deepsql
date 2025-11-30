@@ -16,6 +16,9 @@ rustyline = "14.0"
 clap = { version = "4.5", features = ["derive"] }
 prettytable-rs = "0.10"
 
+# Python bindings
+pyo3 = { version = "0.22", features = ["extension-module"], optional = true }
+
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
@@ -25,11 +28,15 @@ tempfile = "3.8"
 [lib]
 name = "deepsql"
 path = "src/lib.rs"
+crate-type = ["rlib", "cdylib"]
 
 [[bin]]
 name = "deepsql"
 path = "src/bin/deepsql.rs"
-required-features = []
+
+[features]
+default = []
+python = ["pyo3"]
 
 [profile.release]
 opt-level = 3

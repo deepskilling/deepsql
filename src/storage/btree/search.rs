@@ -53,7 +53,7 @@ fn find_child_page(node: &BTreeNode, key: &[u8]) -> Result<PageId> {
     
     for i in 0..cell_count {
         let cell = node.get_interior_cell(i)?;
-        if key < &cell.key {
+        if key < cell.key.as_slice() {
             return Ok(cell.left_child);
         }
     }
