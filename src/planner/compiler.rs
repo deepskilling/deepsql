@@ -49,6 +49,37 @@ impl VMCompiler {
         self.table_schemas = schemas;
     }
     
+    /// Extract all column names referenced in an expression (for WHERE clauses)
+    fn extract_columns(&self, expr: &Expr) -> std::collections::HashSet<String> {
+        let mut columns = std::collections::HashSet::new();
+        self.extract_columns_recursive(expr, &mut columns);
+        columns
+    }
+    
+    /// Recursively extract column names from an expression
+    fn extract_columns_recursive(&self, expr: &Expr, columns: &mut std::collections::HashSet<String>) {
+        match expr {
+            Expr::Column { name, .. } => {
+                columns.insert(name.clone());
+            }
+            Expr::BinaryOp { left, right, .. } => {
+                self.extract_columns_recursive(left, columns);
+                self.extract_columns_recursive(right, columns);
+            }
+            Expr::UnaryOp { expr, .. } => {
+                self.extract_columns_recursive(expr, columns);
+            }
+            Expr::Function { args, .. } => {
+                for arg in args {
+                    self.extract_columns_recursive(arg, columns);
+                }
+            }
+            Expr::Literal(_) => {
+                // Literals don't reference columns
+            }
+        }
+    }
+    
     /// Compile a physical plan to VM opcodes
     pub fn compile(&mut self, plan: &PhysicalPlan) -> Result<Program> {
         // Compile the plan tree
@@ -67,14 +98,11 @@ impl VMCompiler {
         
         #[cfg(test)]
         {
-            // Only print for UPDATE/DELETE to reduce noise
-            let has_update_or_delete = program.opcodes.iter().any(|op| {
-                matches!(op, Opcode::Update { .. } | Opcode::Delete { .. })
-            });
-            
-            if has_update_or_delete {
+            // Print VM program for debugging WHERE clauses in tests
+            let has_filter = program.opcodes.iter().any(|op| matches!(op, Opcode::Filter { .. }));
+            if has_filter && std::env::var("DEBUG_VM").is_ok() {
                 eprintln!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-                eprintln!("VM Program (UPDATE/DELETE): {} opcodes", program.opcodes.len());
+                eprintln!("VM Program: {} opcodes", program.opcodes.len());
                 for (i, opcode) in program.opcodes.iter().enumerate() {
                     eprintln!("  {}: {:?}", i, opcode);
                 }
@@ -87,6 +115,23 @@ impl VMCompiler {
     
     /// Patch placeholder jump targets to point to the correct locations
     fn patch_jump_targets(&mut self, halt_position: usize) {
+        // First pass: collect Filter indices that need patching
+        let mut filter_patches = Vec::new();
+        for i in 0..self.opcodes.len() {
+            if let Opcode::Filter { jump_target, .. } = &self.opcodes[i] {
+                if *jump_target >= 1000 {
+                    // Find the Next opcode after this Filter
+                    for j in (i+1)..self.opcodes.len() {
+                        if matches!(self.opcodes[j], Opcode::Next { .. }) {
+                            filter_patches.push((i, j));
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Second pass: apply all patches
         for i in 0..self.opcodes.len() {
             match &mut self.opcodes[i] {
                 Opcode::Rewind { jump_if_empty, .. } if *jump_if_empty >= 1000 => {
@@ -96,6 +141,16 @@ impl VMCompiler {
                 Opcode::Next { jump_if_done, .. } if *jump_if_done >= 1000 => {
                     // Placeholder value, patch to halt
                     *jump_if_done = halt_position;
+                }
+                Opcode::Filter { jump_target, .. } if *jump_target >= 1000 => {
+                    // Apply the filter patch we calculated earlier
+                    if let Some((_filter_idx, next_idx)) = filter_patches.iter().find(|(fi, _)| *fi == i) {
+                        *jump_target = *next_idx;
+                        #[cfg(test)]
+                        if std::env::var("DEBUG_VM").is_ok() {
+                            eprintln!("DEBUG: Patched Filter at {} to jump to {}", i, next_idx);
+                        }
+                    }
                 }
                 _ => {}
             }
@@ -192,32 +247,87 @@ impl VMCompiler {
         Err(Error::Internal("Index scan compilation not yet implemented".to_string()))
     }
     
-    /// Compile filter (WHERE clause)
+    /// Compile filter (WHERE clause) - Column-First Architecture
     fn compile_filter(&mut self, input: &PhysicalPlan, predicate: &Expr) -> Result<()> {
-        // Strategy: compile input, then inject filter checks into the loop
+        // NEW STRATEGY: Column-First Architecture
+        // 1. Compile input scan (TableScan, Rewind, loop setup)
+        // 2. Extract columns referenced in WHERE clause
+        // 3. Generate Column opcodes to load those columns into registers
+        // 4. Generate Filter opcode (now columns are in registers)
+        // 5. Continue with rest of plan (Project, ResultRow, etc.)
         
-        // For now, we'll compile the input scan and track where to inject filter
         let start_len = self.opcodes.len();
         self.compile_plan(input)?;
         
-        // Find the ResultRow opcode and inject Filter before it
-        // Look backwards from end to find ResultRow
-        let mut result_row_idx = None;
+        // Extract columns referenced in the predicate
+        let where_columns = self.extract_columns(predicate);
+        
+        #[cfg(test)]
+        eprintln!("DEBUG compile_filter: WHERE columns = {:?}", where_columns);
+        
+        // Find the ResultRow opcode (or Update/Delete) to inject Column+Filter before it
+        let mut injection_point = None;
         for i in (start_len..self.opcodes.len()).rev() {
-            if matches!(self.opcodes[i], Opcode::ResultRow { .. }) {
-                result_row_idx = Some(i);
+            if matches!(self.opcodes[i], Opcode::ResultRow { .. } | Opcode::Update { .. } | Opcode::Delete { .. }) {
+                injection_point = Some(i);
                 break;
             }
         }
         
-        if let Some(idx) = result_row_idx {
-            // Insert Filter before ResultRow
-            // Filter: if condition is false, jump past ResultRow to Next
-            let next_idx = idx + 2; // Jump to the Next instruction
-            self.opcodes.insert(idx, Opcode::Filter {
+        if let Some(idx) = injection_point {
+            // Generate Column opcodes for WHERE clause columns
+            let mut column_opcodes = Vec::new();
+            let mut column_to_register = std::collections::HashMap::new();
+            
+            if let Some(table_name) = &self.current_table {
+                if let Some(schema) = self.table_schemas.get(table_name) {
+                    if let Some(cursor_id) = self.current_cursor {
+                        for col_name in &where_columns {
+                            // Find column index in schema
+                            if let Some(col_idx) = schema.columns.iter().position(|c| &c.name == col_name) {
+                                let register = self.next_register;
+                                self.next_register += 1;
+                                
+                                column_opcodes.push(Opcode::Column {
+                                    cursor_id,
+                                    column_index: col_idx,
+                                    register,
+                                });
+                                
+                                column_to_register.insert(col_name.clone(), register);
+                                
+                                #[cfg(test)]
+                                eprintln!("DEBUG compile_filter: Column {} (idx {}) -> register {}", 
+                                         col_name, col_idx, register);
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Insert Column opcodes before the injection point
+            for (i, opcode) in column_opcodes.into_iter().enumerate() {
+                self.opcodes.insert(idx + i, opcode);
+            }
+            
+            // Calculate new injection point after insertions
+            let filter_idx = idx + where_columns.len();
+            
+            // Calculate jump target: we want to jump past ResultRow/Update/Delete to Next
+            // The Filter will be at filter_idx
+            // We use a placeholder (9999) and will patch it later in patch_jump_targets
+            // For now, just use a placeholder that will be fixed up
+            let jump_target = 9999; // Placeholder - will be patched
+            
+            // Insert Filter after Column opcodes
+            // If filter fails, jump to Next opcode
+            self.opcodes.insert(filter_idx, Opcode::Filter {
                 condition: predicate.clone(),
-                jump_target: next_idx,
+                jump_target,
             });
+            
+            #[cfg(test)]
+            eprintln!("DEBUG compile_filter: Filter inserted at {}, jump_target={}", filter_idx, jump_target);
         }
         
         Ok(())
@@ -384,10 +494,31 @@ impl VMCompiler {
         
         let loop_start = self.opcodes.len();
         
-        // Apply filter if present
+        // Apply filter if present - Column-First Architecture
         if let Some(predicate) = filter {
+            // Extract columns referenced in WHERE clause
+            let where_columns = self.extract_columns(predicate);
+            
+            // Generate Column opcodes to load WHERE columns into registers
+            if let Some(schema) = self.table_schemas.get(table) {
+                for col_name in &where_columns {
+                    if let Some(col_idx) = schema.columns.iter().position(|c| &c.name == col_name) {
+                        let register = self.next_register;
+                        self.next_register += 1;
+                        
+                        self.opcodes.push(Opcode::Column {
+                            cursor_id,
+                            column_index: col_idx,
+                            register,
+                        });
+                    }
+                }
+            }
+            
+            // Now generate Filter opcode (columns are in registers)
             // If filter fails, skip this row (jump to Next)
-            let next_position = self.opcodes.len() + 100; // Placeholder, will calculate after
+            // We'll patch this later with correct jump target
+            let next_position = self.opcodes.len() + 100; // Placeholder
             self.opcodes.push(Opcode::Filter {
                 condition: predicate.clone(),
                 jump_target: next_position,
@@ -450,9 +581,30 @@ impl VMCompiler {
         
         let loop_start = self.opcodes.len();
         
-        // Apply filter if present
+        // Apply filter if present - Column-First Architecture
         if let Some(predicate) = filter {
+            // Extract columns referenced in WHERE clause
+            let where_columns = self.extract_columns(predicate);
+            
+            // Generate Column opcodes to load WHERE columns into registers
+            if let Some(schema) = self.table_schemas.get(table) {
+                for col_name in &where_columns {
+                    if let Some(col_idx) = schema.columns.iter().position(|c| &c.name == col_name) {
+                        let register = self.next_register;
+                        self.next_register += 1;
+                        
+                        self.opcodes.push(Opcode::Column {
+                            cursor_id,
+                            column_index: col_idx,
+                            register,
+                        });
+                    }
+                }
+            }
+            
+            // Now generate Filter opcode (columns are in registers)
             // If filter fails, skip this row (jump to Next)
+            // We'll patch this later with correct jump target
             let next_position = self.opcodes.len() + 100; // Placeholder
             self.opcodes.push(Opcode::Filter {
                 condition: predicate.clone(),

@@ -63,6 +63,7 @@ struct CursorState {
     btree: BTree,
     cursor: Cursor,
     current_record: Option<Record>,
+    table_name: String, // For column resolution in Filter
 }
 
 /// VM Executor
@@ -119,6 +120,7 @@ impl Executor {
                         btree,
                         cursor,
                         current_record: None,
+                        table_name: table.clone(),
                     });
                     
                     pc += 1;
@@ -205,7 +207,33 @@ impl Executor {
                 }
                 
                 Opcode::Filter { condition, jump_target } => {
+                    // Build column context from current cursor record for WHERE clause evaluation
+                    let mut row_map = HashMap::new();
+                    
+                    // Find the active cursor and build column name -> value mapping
+                    for (_cid, state) in &self.cursors {
+                        if let Some(record) = &state.current_record {
+                            if let Some(schema) = table_schemas.get(&state.table_name) {
+                                for (idx, col_schema) in schema.columns.iter().enumerate() {
+                                    if idx < record.values.len() {
+                                        let val = convert_record_value_to_value(&record.values[idx]);
+                                        row_map.insert(col_schema.name.clone(), val);
+                                    }
+                                }
+                            }
+                            break; // Use first active cursor
+                        }
+                    }
+                    
+                    // Set row context for evaluator
+                    self.evaluator.set_row(row_map);
+                    
+                    // Evaluate the WHERE condition
                     let value = self.evaluator.eval(condition)?;
+                    
+                    // Clear context after evaluation
+                    self.evaluator.clear();
+                    
                     if !value.is_truthy()? {
                         pc = *jump_target;
                     } else {

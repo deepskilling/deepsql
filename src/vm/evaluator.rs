@@ -11,6 +11,12 @@ use std::collections::HashMap;
 pub struct ExprEvaluator {
     /// Current row data (column_name -> value)
     row: HashMap<String, Value>,
+    
+    /// VM registers (for register-based evaluation)
+    registers: Vec<Value>,
+    
+    /// Column to register mapping (column_name -> register_index)
+    column_register_map: HashMap<String, usize>,
 }
 
 impl ExprEvaluator {
@@ -18,12 +24,27 @@ impl ExprEvaluator {
     pub fn new() -> Self {
         ExprEvaluator {
             row: HashMap::new(),
+            registers: Vec::new(),
+            column_register_map: HashMap::new(),
         }
     }
     
     /// Set the current row context
     pub fn set_row(&mut self, row: HashMap<String, Value>) {
         self.row = row;
+    }
+    
+    /// Set registers for register-based evaluation (used by WHERE clauses)
+    pub fn set_registers(&mut self, registers: &[Value], column_map: HashMap<String, usize>) {
+        self.registers = registers.to_vec();
+        self.column_register_map = column_map;
+    }
+    
+    /// Clear registers and row context
+    pub fn clear(&mut self) {
+        self.row.clear();
+        self.registers.clear();
+        self.column_register_map.clear();
     }
     
     /// Evaluate an expression
@@ -57,6 +78,14 @@ impl ExprEvaluator {
     }
     
     fn eval_column(&self, _table: Option<&str>, name: &str) -> Result<Value> {
+        // First, try to get from registers (for WHERE clause evaluation)
+        if let Some(&register_idx) = self.column_register_map.get(name) {
+            if let Some(value) = self.registers.get(register_idx) {
+                return Ok(value.clone());
+            }
+        }
+        
+        // Fall back to row context (for other evaluations)
         self.row.get(name)
             .cloned()
             .ok_or_else(|| Error::Internal(format!("Column not found: {}", name)))
