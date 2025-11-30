@@ -357,6 +357,151 @@ impl Executor {
                     pc += 1;
                 }
                 
+                Opcode::Aggregate { function, expr, accumulator_register } => {
+                    // Accumulate value for aggregate function
+                    use crate::vm::opcode::AggregateFunction;
+                    
+                    // Ensure accumulator register exists
+                    while self.registers.len() <= *accumulator_register {
+                        self.registers.push(Value::Null);
+                    }
+                    
+                    match function {
+                        AggregateFunction::Count => {
+                            // COUNT: increment counter
+                            let current = if let Value::Integer(c) = self.registers[*accumulator_register] {
+                                c
+                            } else {
+                                0
+                            };
+                            self.registers[*accumulator_register] = Value::Integer(current + 1);
+                        }
+                        AggregateFunction::Sum | AggregateFunction::Avg => {
+                            // SUM/AVG: accumulate values
+                            if let Some(expr) = expr {
+                                // Need to set row context for expression evaluation
+                                // Find the cursor that's being aggregated
+                                let cursor_states: Vec<_> = self.cursors.iter().collect();
+                                if let Some((_, state)) = cursor_states.first() {
+                                    if let Some(record) = &state.current_record {
+                                        // Build row context from record and table schema
+                                        let table_name = &state.table_name;
+                                        if let Some(schema) = table_schemas.get(table_name) {
+                                            let mut row_context = std::collections::HashMap::new();
+                                            for (i, col) in schema.columns.iter().enumerate() {
+                                                if i < record.values.len() {
+                                                    let value = match &record.values[i] {
+                                                        RecordValue::Integer(v) => Value::Integer(*v),
+                                                        RecordValue::Real(v) => Value::Real(*v),
+                                                        RecordValue::Text(v) => Value::Text(v.clone()),
+                                                        RecordValue::Blob(v) => Value::Blob(v.clone()),
+                                                        RecordValue::Null => Value::Null,
+                                                    };
+                                                    row_context.insert(col.name.clone(), value);
+                                                }
+                                            }
+                                            self.evaluator.set_row(row_context);
+                                        }
+                                    }
+                                }
+                                
+                                let value = self.evaluator.eval(expr)?;
+                                self.evaluator.clear(); // Clear row context
+                                let current = &self.registers[*accumulator_register];
+                                
+                                if matches!(current, Value::Null) {
+                                    // First value
+                                    self.registers[*accumulator_register] = value;
+                                } else {
+                                    // Add to accumulator
+                                    self.registers[*accumulator_register] = current.add(&value)?;
+                                }
+                            }
+                        }
+                        AggregateFunction::Min => {
+                            if let Some(expr) = expr {
+                                // Set row context (same as SUM/AVG)
+                                let cursor_states: Vec<_> = self.cursors.iter().collect();
+                                if let Some((_, state)) = cursor_states.first() {
+                                    if let Some(record) = &state.current_record {
+                                        let table_name = &state.table_name;
+                                        if let Some(schema) = table_schemas.get(table_name) {
+                                            let mut row_context = std::collections::HashMap::new();
+                                            for (i, col) in schema.columns.iter().enumerate() {
+                                                if i < record.values.len() {
+                                                    let value = match &record.values[i] {
+                                                        RecordValue::Integer(v) => Value::Integer(*v),
+                                                        RecordValue::Real(v) => Value::Real(*v),
+                                                        RecordValue::Text(v) => Value::Text(v.clone()),
+                                                        RecordValue::Blob(v) => Value::Blob(v.clone()),
+                                                        RecordValue::Null => Value::Null,
+                                                    };
+                                                    row_context.insert(col.name.clone(), value);
+                                                }
+                                            }
+                                            self.evaluator.set_row(row_context);
+                                        }
+                                    }
+                                }
+                                
+                                let value = self.evaluator.eval(expr)?;
+                                self.evaluator.clear();
+                                let current = &self.registers[*accumulator_register];
+                                
+                                if matches!(current, Value::Null) || value.compare(current)? == std::cmp::Ordering::Less {
+                                    self.registers[*accumulator_register] = value;
+                                }
+                            }
+                        }
+                        AggregateFunction::Max => {
+                            if let Some(expr) = expr {
+                                // Set row context (same as SUM/AVG)
+                                let cursor_states: Vec<_> = self.cursors.iter().collect();
+                                if let Some((_, state)) = cursor_states.first() {
+                                    if let Some(record) = &state.current_record {
+                                        let table_name = &state.table_name;
+                                        if let Some(schema) = table_schemas.get(table_name) {
+                                            let mut row_context = std::collections::HashMap::new();
+                                            for (i, col) in schema.columns.iter().enumerate() {
+                                                if i < record.values.len() {
+                                                    let value = match &record.values[i] {
+                                                        RecordValue::Integer(v) => Value::Integer(*v),
+                                                        RecordValue::Real(v) => Value::Real(*v),
+                                                        RecordValue::Text(v) => Value::Text(v.clone()),
+                                                        RecordValue::Blob(v) => Value::Blob(v.clone()),
+                                                        RecordValue::Null => Value::Null,
+                                                    };
+                                                    row_context.insert(col.name.clone(), value);
+                                                }
+                                            }
+                                            self.evaluator.set_row(row_context);
+                                        }
+                                    }
+                                }
+                                
+                                let value = self.evaluator.eval(expr)?;
+                                self.evaluator.clear();
+                                let current = &self.registers[*accumulator_register];
+                                
+                                if matches!(current, Value::Null) || value.compare(current)? == std::cmp::Ordering::Greater {
+                                    self.registers[*accumulator_register] = value;
+                                }
+                            }
+                        }
+                    }
+                    pc += 1;
+                }
+                
+                Opcode::FinalizeAggregate { accumulator_register, result_register } => {
+                    // Finalize aggregate (for AVG, divide by count)
+                    // For now, just copy accumulator to result
+                    while self.registers.len() <= *result_register {
+                        self.registers.push(Value::Null);
+                    }
+                    self.registers[*result_register] = self.registers[*accumulator_register].clone();
+                    pc += 1;
+                }
+                
                 Opcode::Goto { target } => {
                     pc = *target;
                 }

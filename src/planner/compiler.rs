@@ -335,12 +335,145 @@ impl VMCompiler {
         Ok(())
     }
     
+    /// Check if an expression contains aggregate functions
+    fn has_aggregates(&self, expressions: &[Expr]) -> bool {
+        for expr in expressions {
+            if let Expr::Function { name, .. } = expr {
+                let func_upper = name.to_uppercase();
+                if matches!(func_upper.as_str(), "COUNT" | "SUM" | "AVG" | "MIN" | "MAX") {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+    
+    /// Compile aggregate projection (SELECT COUNT(*), SUM(x), etc.)
+    fn compile_aggregate_project(&mut self, input: &PhysicalPlan, expressions: &[Expr]) -> Result<()> {
+        use crate::sql::ast::Expr;
+        use crate::vm::opcode::AggregateFunction;
+        
+        #[cfg(test)]
+        eprintln!("DEBUG compile_aggregate_project: {} expressions", expressions.len());
+        
+        // For aggregates, we need a different structure:
+        // 1. TableScan + Rewind
+        // 2. Loop: Aggregate accumulation + Next
+        // 3. FinalizeAggregate + ResultRow (only once!)
+        
+        // Compile input (should be a table scan)
+        if let PhysicalPlan::TableScan { table } = input {
+            let cursor_id = self.next_cursor;
+            self.next_cursor += 1;
+            self.current_cursor = Some(cursor_id);
+            self.current_table = Some(table.clone());
+            
+            // TableScan
+            self.opcodes.push(Opcode::TableScan {
+                table: table.clone(),
+                cursor_id,
+            });
+            
+            // Calculate jump targets ahead of time
+            let rewind_jump_empty = 999999; // Placeholder, will patch later
+            
+            // Rewind
+            self.opcodes.push(Opcode::Rewind {
+                cursor_id,
+                jump_if_empty: rewind_jump_empty,
+            });
+            
+            let loop_start = self.opcodes.len();
+            
+            // For each aggregate expression, generate Aggregate opcode
+            for (reg_idx, expr) in expressions.iter().enumerate() {
+                if let Expr::Function { name, args } = expr {
+                    let func_upper = name.to_uppercase();
+                    let agg_func = match func_upper.as_str() {
+                        "COUNT" => AggregateFunction::Count,
+                        "SUM" => AggregateFunction::Sum,
+                        "AVG" => AggregateFunction::Avg,
+                        "MIN" => AggregateFunction::Min,
+                        "MAX" => AggregateFunction::Max,
+                        _ => continue, // Not an aggregate
+                    };
+                    
+                    // Accumulator register (high indices to avoid conflicts)
+                    let accumulator_register = 100 + reg_idx;
+                    
+                    // Generate Aggregate opcode
+                    let agg_expr = if args.is_empty() {
+                        None // COUNT(*)
+                    } else {
+                        Some(args[0].clone()) // COUNT(col), SUM(col), etc.
+                    };
+                    
+                    self.opcodes.push(Opcode::Aggregate {
+                        function: agg_func,
+                        expr: agg_expr,
+                        accumulator_register,
+                    });
+                }
+            }
+            
+            // Save position for after-loop code
+            let after_loop = self.opcodes.len() + 2; // +2 for Next and Goto opcodes
+            
+            // Next (loop back, jump to after_loop when done)
+            self.opcodes.push(Opcode::Next {
+                cursor_id,
+                jump_if_done: after_loop,
+            });
+            
+            self.opcodes.push(Opcode::Goto {
+                target: loop_start,
+            });
+            
+            // After loop: Finalize aggregates and emit result
+            
+            for (reg_idx, expr) in expressions.iter().enumerate() {
+                if let Expr::Function { .. } = expr {
+                    let accumulator_register = 100 + reg_idx;
+                    let result_register = reg_idx;
+                    
+                    self.opcodes.push(Opcode::FinalizeAggregate {
+                        accumulator_register,
+                        result_register,
+                    });
+                }
+            }
+            
+            // Single ResultRow with aggregated results
+            self.opcodes.push(Opcode::ResultRow {
+                register_start: 0,
+                register_count: expressions.len(),
+            });
+            
+            let halt_position = self.opcodes.len();
+            self.opcodes.push(Opcode::Halt);
+            
+            // Patch Rewind jump_if_empty to point to Halt
+            if let Opcode::Rewind { jump_if_empty, .. } = &mut self.opcodes[1] {
+                *jump_if_empty = halt_position;
+            }
+            
+            Ok(())
+        } else {
+            Err(Error::Internal("Aggregate queries must start with table scan".to_string()))
+        }
+    }
+    
     /// Compile projection (SELECT columns)
     fn compile_project(&mut self, input: &PhysicalPlan, expressions: &[Expr]) -> Result<()> {
         use crate::sql::ast::Expr;
         
         #[cfg(test)]
         eprintln!("DEBUG compile_project: {} expressions", expressions.len());
+        
+        // Check if we have aggregates
+        if self.has_aggregates(expressions) {
+            return self.compile_aggregate_project(input, expressions);
+        }
         
         // First compile input
         let start_len = self.opcodes.len();

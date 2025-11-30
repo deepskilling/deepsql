@@ -99,8 +99,33 @@ pub enum Opcode {
         target: usize,
     },
     
+    /// Aggregate accumulator - accumulates values across rows
+    /// Aggregate(function, expr, accumulator_register)
+    Aggregate {
+        function: AggregateFunction,
+        expr: Option<Expr>, // None for COUNT(*)
+        accumulator_register: usize,
+    },
+    
+    /// Finalize aggregate and store result
+    /// FinalizeAggregate(accumulator_register, result_register)
+    FinalizeAggregate {
+        accumulator_register: usize,
+        result_register: usize,
+    },
+    
     /// Halt execution
     Halt,
+}
+
+/// Aggregate function types
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum AggregateFunction {
+    Count,
+    Sum,
+    Avg,
+    Min,
+    Max,
 }
 
 /// VM Program - sequence of opcodes
@@ -189,6 +214,12 @@ impl std::fmt::Display for Opcode {
             }
             Opcode::Goto { target } => {
                 write!(f, "Goto {}", target)
+            }
+            Opcode::Aggregate { function, accumulator_register, .. } => {
+                write!(f, "Aggregate {:?} -> r[{}]", function, accumulator_register)
+            }
+            Opcode::FinalizeAggregate { accumulator_register, result_register } => {
+                write!(f, "FinalizeAggregate r[{}] -> r[{}]", accumulator_register, result_register)
             }
             Opcode::Halt => {
                 write!(f, "Halt")

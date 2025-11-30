@@ -494,12 +494,19 @@ impl Parser {
                     let mut args = Vec::new();
                     
                     if !self.check(&TokenType::RightParen) {
-                        loop {
-                            args.push(self.parse_expression()?);
-                            if !self.check(&TokenType::Comma) {
-                                break;
-                            }
+                        // Special handling for COUNT(*)
+                        if self.check(&TokenType::Star) && name.to_uppercase() == "COUNT" {
                             self.advance();
+                            // Use a special marker for COUNT(*) - empty args vector
+                            // We'll handle this specially in the compiler
+                        } else {
+                            loop {
+                                args.push(self.parse_expression()?);
+                                if !self.check(&TokenType::Comma) {
+                                    break;
+                                }
+                                self.advance();
+                            }
                         }
                     }
                     
