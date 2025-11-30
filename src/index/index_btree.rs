@@ -12,38 +12,67 @@ use crate::types::Value;
 
 /// Index B+Tree - maps indexed values to row IDs
 pub struct IndexBTree {
-    /// Root page of the index (reserved for future use)
-    _root_page: u32,
+    /// Root page of the index
+    root_page: u32,
     
     /// Whether this is a unique index
     unique: bool,
+    
+    /// In-memory index map (simplified implementation)
+    /// Maps key bytes to row IDs
+    index_map: std::collections::HashMap<Vec<u8>, Vec<u64>>,
 }
 
 impl IndexBTree {
     /// Create a new index B+Tree
     pub fn new(_pager: &mut Pager, root_page: u32, unique: bool) -> Result<Self> {
-        Ok(IndexBTree { _root_page: root_page, unique })
+        Ok(IndexBTree { 
+            root_page,
+            unique,
+            index_map: std::collections::HashMap::new(),
+        })
     }
     
     /// Insert an entry into the index
     /// Key: indexed column value(s), Value: row ID
-    pub fn insert(&mut self, _pager: &mut Pager, _key: &[u8], _row_id: u64) -> Result<()> {
-        // TODO: Full implementation requires B+Tree API refactoring
-        // to support raw key-value storage separate from Record structure
+    pub fn insert(&mut self, _pager: &mut Pager, key: &[u8], row_id: u64) -> Result<()> {
+        // Simplified: Use in-memory HashMap
+        // TODO: Persist to actual B+Tree pages
+        
+        let key_vec = key.to_vec();
+        
+        if self.unique {
+            // Check for duplicate in unique index
+            if self.index_map.contains_key(&key_vec) {
+                return Err(crate::error::Error::Internal(
+                    "Unique constraint violation".into()
+                ));
+            }
+            self.index_map.insert(key_vec, vec![row_id]);
+        } else {
+            // Non-unique: append to existing list
+            self.index_map.entry(key_vec)
+                .or_insert_with(Vec::new)
+                .push(row_id);
+        }
+        
         Ok(())
     }
     
     /// Delete an entry from the index
-    pub fn delete(&mut self, _pager: &mut Pager, _key: &[u8]) -> Result<()> {
-        // TODO: Full implementation pending
+    pub fn delete(&mut self, _pager: &mut Pager, key: &[u8]) -> Result<()> {
+        // Simplified: Remove from HashMap
+        // TODO: Delete from actual B+Tree
+        self.index_map.remove(key);
         Ok(())
     }
     
     /// Search for a key in the index
     /// Returns the row ID if found
-    pub fn search(&mut self, _pager: &mut Pager, _key: &[u8]) -> Result<Option<u64>> {
-        // TODO: Full implementation pending
-        Ok(None)
+    pub fn search(&mut self, _pager: &mut Pager, key: &[u8]) -> Result<Option<u64>> {
+        // Simplified: Lookup in HashMap
+        // TODO: Search actual B+Tree
+        Ok(self.index_map.get(key).and_then(|ids| ids.first().copied()))
     }
     
     /// Scan the index for keys in a range
@@ -53,9 +82,12 @@ impl IndexBTree {
         _start_key: Option<&[u8]>,
         _end_key: Option<&[u8]>,
     ) -> Result<Vec<u64>> {
-        // This would use cursor to iterate through matching keys
-        // For now, return empty list
-        Ok(Vec::new())
+        // Simplified: Return all row IDs
+        // TODO: Range scan on actual B+Tree
+        let all_ids: Vec<u64> = self.index_map.values()
+            .flat_map(|ids| ids.iter().copied())
+            .collect();
+        Ok(all_ids)
     }
     
     /// Check if this is a unique index
