@@ -101,9 +101,47 @@ impl SqlEngine {
     }
     
     /// Execute INSERT statement
-    fn execute_insert(&mut self, _insert: crate::sql::ast::InsertStatement) -> Result<QueryResult> {
-        // TODO: Phase A Week 2
-        Err(Error::Internal("INSERT not yet implemented".to_string()))
+    fn execute_insert(&mut self, insert: crate::sql::ast::InsertStatement) -> Result<QueryResult> {
+        // Step 1: Get table schema from catalog
+        let table_schema = self.catalog.get_table(&insert.table)
+            .ok_or_else(|| Error::Internal(format!("Table '{}' does not exist", insert.table)))?;
+        
+        // Step 2: Validate column count
+        let _column_count = if let Some(ref cols) = insert.columns {
+            // Specific columns provided
+            if cols.len() != insert.values[0].len() {
+                return Err(Error::Internal(
+                    format!("Column count mismatch: {} columns specified but {} values provided",
+                            cols.len(), insert.values[0].len())
+                ));
+            }
+            cols.len()
+        } else {
+            // All columns
+            if table_schema.columns.len() != insert.values[0].len() {
+                return Err(Error::Internal(
+                    format!("Column count mismatch: table has {} columns but {} values provided",
+                            table_schema.columns.len(), insert.values[0].len())
+                ));
+            }
+            table_schema.columns.len()
+        };
+        
+        // Step 3: Convert to logical plan
+        let statement = Statement::Insert(insert);
+        let logical_plan = PlanBuilder::new().build(statement)?;
+        
+        // Step 4: Convert to physical plan
+        let physical_plan = self.logical_to_physical(logical_plan)?;
+        
+        // Step 5: Compile to VM opcodes
+        let program = self.compile_to_vm(&physical_plan)?;
+        
+        // Step 6: Execute
+        let mut executor = Executor::new();
+        let result = executor.execute(&program, &mut self.pager)?;
+        
+        Ok(QueryResult::with_affected(result.rows_affected))
     }
     
     /// Execute UPDATE statement
@@ -119,9 +157,16 @@ impl SqlEngine {
     }
     
     /// Execute CREATE TABLE statement
-    fn execute_create_table(&mut self, _create: crate::sql::ast::CreateTableStatement) -> Result<QueryResult> {
-        // TODO: Phase A Week 3-4
-        Err(Error::Internal("CREATE TABLE not yet implemented".to_string()))
+    fn execute_create_table(&mut self, create: crate::sql::ast::CreateTableStatement) -> Result<QueryResult> {
+        // Step 1: Convert AST to LogicalPlan
+        let statement = Statement::CreateTable(create);
+        let logical_plan = PlanBuilder::new().build(statement)?;
+        
+        // Step 2: Execute via catalog manager
+        self.catalog.create_table(&logical_plan, &mut self.pager)?;
+        
+        // Step 3: Return success
+        Ok(QueryResult::with_affected(0))
     }
     
     /// Convert logical plan to physical plan

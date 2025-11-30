@@ -266,9 +266,35 @@ impl VMCompiler {
     }
     
     /// Compile INSERT
-    fn compile_insert(&mut self, _table: &str, _columns: &Option<Vec<String>>, _values: &[Vec<Expr>]) -> Result<()> {
-        // TODO: Phase A Week 2
-        Err(Error::Internal("INSERT compilation not yet implemented".to_string()))
+    fn compile_insert(&mut self, table: &str, _columns: &Option<Vec<String>>, values: &[Vec<Expr>]) -> Result<()> {
+        // Open cursor on table
+        let cursor_id = self.next_cursor;
+        self.next_cursor += 1;
+        
+        self.opcodes.push(Opcode::TableScan {
+            table: table.to_string(),
+            cursor_id,
+        });
+        
+        // For each row to insert
+        for row_values in values {
+            // Evaluate each value expression and store in registers
+            for (reg_idx, expr) in row_values.iter().enumerate() {
+                self.opcodes.push(Opcode::Eval {
+                    expr: expr.clone(),
+                    register: reg_idx,
+                });
+            }
+            
+            // Insert the row from registers
+            self.opcodes.push(Opcode::Insert {
+                cursor_id,
+                register_start: 0,
+                register_count: row_values.len(),
+            });
+        }
+        
+        Ok(())
     }
     
     /// Compile UPDATE
