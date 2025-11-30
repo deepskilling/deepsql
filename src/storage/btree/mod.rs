@@ -16,6 +16,10 @@ pub mod insert;
 pub mod delete;
 /// Search operations
 pub mod search;
+/// Bulk loading operations
+pub mod bulk_load;
+/// Advanced rebalancing heuristics
+pub mod rebalance;
 
 use crate::error::{Error, Result};
 use crate::storage::{Pager, PageId, PageType};
