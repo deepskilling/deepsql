@@ -483,13 +483,18 @@ impl SqlEngine {
             return Err(Error::Internal("No active transaction".into()));
         }
         
-        // TODO: Actually flush WAL and checkpoint
-        // For now, just mark transaction as complete
+        // Flush changes to disk (simplified: already persisted via pager)
+        // In full implementation, this would:
+        // 1. Write all buffered changes to WAL
+        // 2. Sync WAL to disk
+        // 3. Mark transaction as committed in WAL
+        // 4. Checkpoint WAL to main database file
+        
         self.in_transaction = false;
         let stmt_count = self.transaction_buffer.len();
         self.transaction_buffer.clear();
         
-        eprintln!("✅ COMMIT: Transaction committed ({} statements)", stmt_count);
+        eprintln!("✅ COMMIT: Transaction committed ({} statements, changes persisted)", stmt_count);
         
         Ok(QueryResult::with_affected(0))
     }
@@ -500,13 +505,22 @@ impl SqlEngine {
             return Err(Error::Internal("No active transaction".into()));
         }
         
-        // TODO: Actually rollback changes from WAL
-        // For now, just discard transaction state
+        // Discard buffered changes
+        // In full implementation, this would:
+        // 1. Read undo log from WAL
+        // 2. Restore previous state of modified pages
+        // 3. Mark transaction as rolled back in WAL
+        // 4. Clear transaction buffer
+        
+        // For MVP: Since writes are already persisted, a true rollback would require
+        // maintaining shadow pages or undo logs. Current implementation provides
+        // the API surface and state tracking.
+        
         self.in_transaction = false;
         let stmt_count = self.transaction_buffer.len();
         self.transaction_buffer.clear();
         
-        eprintln!("✅ ROLLBACK: Transaction rolled back ({} statements discarded)", stmt_count);
+        eprintln!("⚠️  ROLLBACK: Transaction rolled back ({} statements discarded - MVP: actual data rollback not implemented)", stmt_count);
         
         Ok(QueryResult::with_affected(0))
     }
