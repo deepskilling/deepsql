@@ -118,7 +118,7 @@ impl Executor {
                         
                         self.cursors.insert(*cursor_id, CursorState {
                             btree,
-                            cursor: Box::new(cursor),
+                            cursor,
                             current_record: None,
                             table_name: table.clone(),
                         });
