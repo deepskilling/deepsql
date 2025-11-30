@@ -71,6 +71,12 @@ impl PhysicalPlan {
     /// Convert logical plan to physical plan
     pub fn from_logical(logical: LogicalPlan) -> Self {
         match logical {
+            LogicalPlan::CreateIndex { name, table, .. } => {
+                PhysicalPlan::TableScan { table: format!("{}_{}", table, name) }
+            }
+            LogicalPlan::Transaction { .. } => {
+                PhysicalPlan::TableScan { table: "transaction".into() }
+            }
             LogicalPlan::Scan { table, .. } => {
                 PhysicalPlan::TableScan { table }
             }

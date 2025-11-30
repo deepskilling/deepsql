@@ -181,6 +181,18 @@ impl Repl {
                 self.catalog.save(self.engine.pager_mut())?;
                 Ok("Table created successfully.".to_string())
             }
+            Statement::CreateIndex(_) => {
+                Ok("Index created successfully. (TODO: Full implementation)".to_string())
+            }
+            Statement::Begin => {
+                Ok("Transaction begun. (TODO: Full implementation)".to_string())
+            }
+            Statement::Commit => {
+                Ok("Transaction committed. (TODO: Full implementation)".to_string())
+            }
+            Statement::Rollback => {
+                Ok("Transaction rolled back. (TODO: Full implementation)".to_string())
+            }
             Statement::Select(_) => {
                 let result = SelectExecutor::execute(plan, &self.catalog, self.engine.pager_mut())?;
                 

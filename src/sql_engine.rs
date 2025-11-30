@@ -78,6 +78,10 @@ impl SqlEngine {
             Statement::Update(update) => self.execute_update(update),
             Statement::Delete(delete) => self.execute_delete(delete),
             Statement::CreateTable(create) => self.execute_create_table(create),
+            Statement::CreateIndex(idx) => self.execute_create_index(idx),
+            Statement::Begin => self.execute_begin(),
+            Statement::Commit => self.execute_commit(),
+            Statement::Rollback => self.execute_rollback(),
         }
     }
     
@@ -432,6 +436,30 @@ impl SqlEngine {
         Ok(QueryResult::with_affected(result.rows_affected))
     }
     
+    /// Execute CREATE INDEX statement
+    fn execute_create_index(&mut self, _idx: crate::sql::ast::CreateIndexStatement) -> Result<QueryResult> {
+        // TODO: Full implementation
+        Ok(QueryResult::with_affected(0))
+    }
+    
+    /// Execute BEGIN statement
+    fn execute_begin(&mut self) -> Result<QueryResult> {
+        // TODO: Full implementation
+        Ok(QueryResult::with_affected(0))
+    }
+    
+    /// Execute COMMIT statement
+    fn execute_commit(&mut self) -> Result<QueryResult> {
+        // TODO: Full implementation
+        Ok(QueryResult::with_affected(0))
+    }
+    
+    /// Execute ROLLBACK statement
+    fn execute_rollback(&mut self) -> Result<QueryResult> {
+        // TODO: Full implementation
+        Ok(QueryResult::with_affected(0))
+    }
+    
     /// Execute CREATE TABLE statement
     fn execute_create_table(&mut self, create: crate::sql::ast::CreateTableStatement) -> Result<QueryResult> {
         // Step 1: Convert AST to LogicalPlan
@@ -451,6 +479,10 @@ impl SqlEngine {
         use crate::planner::physical::PhysicalPlan as PP;
         
         match logical {
+            LP::CreateIndex { .. } | LP::Transaction { .. } => {
+                // These are handled directly, not via physical plan
+                Ok(PP::TableScan { table: "dummy".into() })
+            }
             LP::Scan { table, .. } => {
                 Ok(PP::TableScan { 
                     table,

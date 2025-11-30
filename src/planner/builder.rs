@@ -23,6 +23,10 @@ impl PlanBuilder {
             Statement::Update(update) => self.build_update(update),
             Statement::Delete(delete) => self.build_delete(delete),
             Statement::CreateTable(create) => self.build_create_table(create),
+            Statement::CreateIndex(idx) => self.build_create_index(idx),
+            Statement::Begin => Ok(LogicalPlan::Transaction { operation: "BEGIN".to_string() }),
+            Statement::Commit => Ok(LogicalPlan::Transaction { operation: "COMMIT".to_string() }),
+            Statement::Rollback => Ok(LogicalPlan::Transaction { operation: "ROLLBACK".to_string() }),
         }
     }
     
@@ -112,6 +116,16 @@ impl PlanBuilder {
         Ok(LogicalPlan::Delete {
             table: delete.table,
             filter: delete.where_clause,
+        })
+    }
+    
+    /// Build CREATE INDEX plan
+    fn build_create_index(&self, idx: CreateIndexStatement) -> Result<LogicalPlan> {
+        Ok(LogicalPlan::CreateIndex {
+            name: idx.name,
+            table: idx.table,
+            columns: idx.columns,
+            unique: idx.unique,
         })
     }
     

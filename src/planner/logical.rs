@@ -64,6 +64,19 @@ pub enum LogicalPlan {
         table: String,
         columns: Vec<ColumnSpec>,
     },
+    
+    /// CREATE INDEX
+    CreateIndex {
+        name: String,
+        table: String,
+        columns: Vec<String>,
+        unique: bool,
+    },
+    
+    /// Transaction control
+    Transaction {
+        operation: String,
+    },
 }
 
 /// Projection expression with optional alias
@@ -166,6 +179,12 @@ impl std::fmt::Display for LogicalPlan {
             }
             LogicalPlan::CreateTable { table, columns } => {
                 write!(f, "CreateTable: {} ({} columns)", table, columns.len())
+            }
+            LogicalPlan::CreateIndex { name, table, .. } => {
+                write!(f, "CreateIndex: {} ON {}", name, table)
+            }
+            LogicalPlan::Transaction { operation } => {
+                write!(f, "Transaction: {}", operation)
             }
         }
     }

@@ -12,6 +12,7 @@ pub mod update;
 pub mod delete;
 /// CREATE TABLE statement
 pub mod create_table;
+pub mod create_index;
 
 pub use expr::*;
 pub use select::*;
@@ -19,23 +20,19 @@ pub use insert::*;
 pub use update::*;
 pub use delete::*;
 pub use create_table::*;
+pub use create_index::*;
 
 /// Top-level SQL statement
 #[derive(Debug, Clone, PartialEq)]
 pub enum Statement {
-    /// SELECT statement
     Select(SelectStatement),
-    
-    /// INSERT statement
     Insert(InsertStatement),
-    
-    /// UPDATE statement
     Update(UpdateStatement),
-    
-    /// DELETE statement
     Delete(DeleteStatement),
-    
-    /// CREATE TABLE statement
     CreateTable(CreateTableStatement),
+    CreateIndex(CreateIndexStatement),
+    Begin,
+    Commit,
+    Rollback,
 }
 

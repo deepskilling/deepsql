@@ -27,7 +27,28 @@ impl Parser {
             TokenType::Insert => Ok(Statement::Insert(self.parse_insert()?)),
             TokenType::Update => Ok(Statement::Update(self.parse_update()?)),
             TokenType::Delete => Ok(Statement::Delete(self.parse_delete()?)),
-            TokenType::Create => Ok(Statement::CreateTable(self.parse_create_table()?)),
+            TokenType::Create => {
+                self.advance();
+                if self.check(&TokenType::Index) || self.check(&TokenType::Unique) {
+                    self.position -= 1;
+                    Ok(Statement::CreateIndex(self.parse_create_index()?))
+                } else {
+                    self.position -= 1;
+                    Ok(Statement::CreateTable(self.parse_create_table()?))
+                }
+            }
+            TokenType::Begin => {
+                self.advance();
+                Ok(Statement::Begin)
+            }
+            TokenType::Commit => {
+                self.advance();
+                Ok(Statement::Commit)
+            }
+            TokenType::Rollback => {
+                self.advance();
+                Ok(Statement::Rollback)
+            }
             _ => Err(Error::Internal(format!("Unexpected token: {:?}", token.token_type))),
         }
     }
@@ -223,6 +244,39 @@ impl Parser {
         }
         
         Ok(stmt)
+    }
+    
+    /// Parse CREATE INDEX statement
+    fn parse_create_index(&mut self) -> Result<CreateIndexStatement> {
+        self.expect(TokenType::Create)?;
+        
+        let unique = if self.check(&TokenType::Unique) {
+            self.advance();
+            true
+        } else {
+            false
+        };
+        
+        self.expect(TokenType::Index)?;
+        let name = self.expect_identifier()?;
+        
+        if !self.check(&TokenType::On) {
+            return Err(Error::Internal("Expected ON after index name".into()));
+        }
+        self.advance();
+        
+        let table = self.expect_identifier()?;
+        self.expect(TokenType::LeftParen)?;
+        
+        let mut columns = vec![self.expect_identifier()?];
+        while self.check(&TokenType::Comma) {
+            self.advance();
+            columns.push(self.expect_identifier()?);
+        }
+        
+        self.expect(TokenType::RightParen)?;
+        
+        Ok(CreateIndexStatement { name, table, columns, unique })
     }
     
     /// Parse CREATE TABLE statement
