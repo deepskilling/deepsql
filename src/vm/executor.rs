@@ -107,6 +107,25 @@ impl Executor {
             match opcode {
                 Opcode::Halt => break,
                 
+                Opcode::IndexScan { index_name, table, cursor_id, search_key: _ } => {
+                    // Simplified: For now, treat IndexScan as TableScan
+                    // TODO: Actually use index for lookup
+                    eprintln!("IndexScan: {} (index: {}) - using table scan for now", table, index_name);
+                    
+                    if let Some(schema) = table_schemas.get(table) {
+                        let btree = BTree::open(schema.root_page)?;
+                        let cursor = Cursor::new(pager, schema.root_page)?;
+                        
+                        self.cursors.insert(*cursor_id, CursorState {
+                            btree,
+                            cursor: Box::new(cursor),
+                            current_record: None,
+                            table_name: table.clone(),
+                        });
+                    }
+                    pc += 1;
+                }
+                
                 Opcode::TableScan { table, cursor_id } => {
                     // Look up table schema to get root_page_id
                     let table_schema = table_schemas.get(table)

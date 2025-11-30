@@ -15,6 +15,15 @@ pub enum Opcode {
         cursor_id: usize,
     },
     
+    /// Open a cursor on an index
+    /// IndexScan(index_name, table_name, cursor_id, search_key)
+    IndexScan {
+        index_name: String,
+        table: String,
+        cursor_id: usize,
+        search_key: Option<Vec<u8>>,
+    },
+    
     /// Rewind a cursor to the beginning
     /// Rewind(cursor_id, jump_if_empty)
     Rewind {
@@ -178,6 +187,9 @@ impl std::fmt::Display for Opcode {
         match self {
             Opcode::TableScan { table, cursor_id } => {
                 write!(f, "TableScan {} -> cursor[{}]", table, cursor_id)
+            }
+            Opcode::IndexScan { index_name, table, cursor_id, .. } => {
+                write!(f, "IndexScan {} (index: {}) -> cursor[{}]", table, index_name, cursor_id)
             }
             Opcode::Rewind { cursor_id, jump_if_empty } => {
                 write!(f, "Rewind cursor[{}] (empty? -> {})", cursor_id, jump_if_empty)
